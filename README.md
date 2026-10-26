@@ -121,7 +121,7 @@ Theo kết quả kiểm thử được ghi nhận trong dự án:
 OJGEN 3.0 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
 
 - **Tác giả ban đầu:** `minhquackk`.
-- **Tác giả/chủ sở hữu dự án nguồn được ghi nhận:** `Namtudifreefire`.
+- **Tác giả/chủ sở hữu dự án nguồn được ghi nhận:** `Namtudifreefire/thienthuongthienha_duyngadocton_`.
 - **Tham khảo giao diện và chủ đề:** [TQLTK](https://github.com/Namtudifreefire/TQLTK).
 - **Giấy phép:** MIT — xem file [`LICENSE`](LICENSE) trong repository.
 
