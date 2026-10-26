@@ -1,0 +1,103 @@
+<Window x:Class="OjGen.Gui.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Cài đặt OjGen"
+        Width="640" Height="720"
+        MinWidth="560" MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}"
+        Style="{StaticResource SlideInWindow}">
+
+    <DockPanel Margin="16">
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="💾 Lưu" Padding="22,8" Click="BtnSave_Click" IsDefault="True" />
+            <Button Content="Hủy" Padding="22,8" Click="BtnCancel_Click" IsCancel="True"
+                    Style="{StaticResource OutlineButton}" />
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,8,0">
+
+                <Border Style="{StaticResource Card}" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="Biên dịch &amp; chạy lời giải" FontWeight="SemiBold" FontSize="14" />
+
+                        <TextBlock Text="Trình biên dịch C++" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="txtCompiler" />
+                        <TextBlock Style="{StaticResource HintText}"
+                                   Text="Tên (g++) hoặc đường dẫn đầy đủ. Windows: nếu không có trong PATH, OjGen tự thử các thư mục MSYS2 mặc định." />
+
+                        <TextBlock Text="Cờ biên dịch" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="txtFlags" />
+                        <TextBlock x:Name="lblFlagsHint" Style="{StaticResource HintText}" />
+
+                        <TextBlock Text="Lệnh Python (cho lời giải .py)" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="txtPython" />
+                        <TextBlock Style="{StaticResource HintText}"
+                                   Text="Để trống = tự tìm (python3 / python / py)." />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="Giới hạn khi chạy lời giải" FontWeight="SemiBold" FontSize="14" />
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="Thời gian tối đa mỗi test (ms)" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="txtTimeout" />
+                                <TextBlock Text="Thời gian biên dịch tối đa (giây)" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="txtCompileTimeout" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                <TextBlock Text="Output tối đa mỗi test (MB)" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="txtMaxOutput" />
+                                <TextBlock Text="Giới hạn bộ nhớ (MB, 0 = không giới hạn)" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="txtMemory" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HintText}" Margin="3,6,3,0"
+                                   Text="Lưu ý: đây KHÔNG phải sandbox. Giới hạn bộ nhớ được kiểm tra định kỳ (theo mức bộ nhớ đỉnh), nên chỉ mang tính tương đối." />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="Tệp đầu ra" FontWeight="SemiBold" FontSize="14" />
+
+                        <TextBlock Text="Thư mục output gốc" Style="{StaticResource FieldLabel}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="txtOutputRoot" Grid.Column="0" />
+                            <Button Grid.Column="1" Content="Chọn…" Click="BtnBrowseRoot_Click"
+                                    Style="{StaticResource OutlineButton}" />
+                        </Grid>
+
+                        <TextBlock Text="Tiền tố tên file test" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="txtPrefix" Width="200" HorizontalAlignment="Left" />
+                        <TextBlock Style="{StaticResource HintText}"
+                                   Text="Chỉ gồm chữ, số, '_' và '-'. Ví dụ tiền tố test → test01.inp, test01.out." />
+
+                        <CheckBox x:Name="chkNormalizeEol" Margin="3,12,3,3"
+                                  Content="Chuẩn hóa CRLF → LF trong file .out" />
+                        <CheckBox x:Name="chkZipCompress" Margin="3,3,3,3"
+                                  Content="Nén Deflate khi tạo ZIP (bỏ chọn = chỉ lưu, không nén)" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="lblError" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap"
+                           Margin="3,0,3,6" Visibility="Collapsed" />
+                <TextBlock x:Name="lblPath" Style="{StaticResource HintText}" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

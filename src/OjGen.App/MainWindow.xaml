@@ -1,0 +1,263 @@
+<Window x:Class="OjGen.Gui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OjGen - Trình tạo bộ test cho bài lập trình thi đấu"
+        Height="800" Width="1220"
+        MinHeight="620" MinWidth="1000"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackgroundBrush}"
+        Style="{StaticResource SlideInWindow}">
+
+    <DockPanel>
+
+        <!-- ================== MENU ================== -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="Tệp">
+                <MenuItem Header="📂 Mở thư mục output" Click="MnuOpenOutput_Click" />
+                <Separator />
+                <MenuItem Header="Thoát" Click="MnuExit_Click" />
+            </MenuItem>
+
+            <MenuItem Header="Công cụ">
+                <MenuItem x:Name="mnuRegen" Header="🔁 Tạo lại output cho thư mục test có sẵn…" Click="MnuRegen_Click" />
+                <MenuItem x:Name="mnuZipDir" Header="📦 Nén ZIP thư mục test có sẵn…" Click="MnuZipDir_Click" />
+                <Separator />
+                <MenuItem x:Name="mnuSelfTest" Header="✅ Kiểm tra nội bộ (selftest)" Click="MnuSelfTest_Click" />
+                <Separator />
+                <MenuItem x:Name="mnuSettings" Header="⚙ Cài đặt…" Click="MnuSettings_Click" />
+            </MenuItem>
+
+            <MenuItem Header="Giao diện">
+                <MenuItem Header="🌗 Đổi Sáng / Tối" Click="MnuToggleTheme_Click" />
+                <MenuItem x:Name="mnuAutoTheme"
+                          Header="⏰ Tự động đổi theme theo giờ"
+                          IsCheckable="True"
+                          Click="MnuAutoTheme_Click" />
+                <Separator />
+                <MenuItem Header="📍 Đưa cửa sổ về giữa" Click="MnuCenterWindow_Click" />
+            </MenuItem>
+
+            <MenuItem Header="Trợ giúp">
+                <MenuItem Header="📖 Hướng dẫn sử dụng" Click="MnuHelp_Click" />
+                <MenuItem Header="ℹ Giới thiệu" Click="MnuAbout_Click" />
+            </MenuItem>
+        </Menu>
+
+        <!-- ================== STATUS BAR ================== -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="lblStatus" Text="Sẵn sàng" />
+            </StatusBarItem>
+            <StatusBarItem>
+                <TextBlock x:Name="lblTheme" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <TextBlock x:Name="lblRoot" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- ================== TAB CONTROL ================== -->
+        <TabControl x:Name="tabMain"
+                    Style="{StaticResource ModernTabControl}"
+                    Margin="10,10,10,5"
+                    Background="Transparent">
+
+            <!-- ============ TAB 1: TẠO BỘ TEST ============ -->
+            <TabItem Header="🧪 Tạo bộ test">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="440" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- ========== CỘT TRÁI: DẠNG BÀI + THAM SỐ ========== -->
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="16" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0">
+                                <TextBlock Text="Dạng bài" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="cmbProblem"
+                                          DisplayMemberPath="Title"
+                                          Margin="0,3,0,3"
+                                          SelectionChanged="CmbProblem_SelectionChanged" />
+                            </StackPanel>
+
+                            <Expander Grid.Row="1" x:Name="expFormat" Header="Định dạng input" Margin="3,6,3,6"
+                                      Foreground="{DynamicResource TextPrimaryBrush}">
+                                <TextBox x:Name="txtFormat"
+                                         Style="{StaticResource MonoTextBox}"
+                                         MaxHeight="190"
+                                         Margin="0,6,0,0" />
+                            </Expander>
+
+                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,2,0,0">
+                                <StackPanel x:Name="paramHost" Margin="0,0,6,0" />
+                            </ScrollViewer>
+
+                            <TextBlock Grid.Row="3" x:Name="lblValidation"
+                                       Foreground="{DynamicResource ErrorBrush}"
+                                       TextWrapping="Wrap"
+                                       FontSize="12"
+                                       Margin="3,8,3,0"
+                                       Visibility="Collapsed" />
+                        </Grid>
+                    </Border>
+
+                    <!-- ========== CỘT PHẢI ========== -->
+                    <Grid Grid.Column="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Thiết lập chung -->
+                        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Số lượng test" VerticalAlignment="Center" />
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                                    <TextBox x:Name="txtTests" Text="10" Width="90" ToolTip="1 .. 10000" />
+                                    <TextBlock Text="Seed" VerticalAlignment="Center" Margin="18,0,6,0" />
+                                    <TextBox x:Name="txtSeed" Width="170"
+                                             ToolTip="Để trống = chọn ngẫu nhiên. Cùng seed + cùng cấu hình = cùng bộ test." />
+                                    <Button Content="🎲" Padding="9,6" Click="BtnRandomSeed_Click"
+                                            Style="{StaticResource OutlineButton}" ToolTip="Chọn seed ngẫu nhiên" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Lời giải chuẩn" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtSolution"
+                                         AllowDrop="True"
+                                         PreviewDragOver="TxtSolution_PreviewDragOver"
+                                         Drop="TxtSolution_Drop"
+                                         ToolTip="File .cpp / .py / .exe. Kéo thả file vào đây. Để trống = chỉ tạo file input." />
+                                <Button Grid.Row="1" Grid.Column="2" Content="Chọn…" Click="BtnBrowseSolution_Click"
+                                        Style="{StaticResource OutlineButton}" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Thư mục đầu ra" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtOutDir" />
+                                <Button Grid.Row="2" Grid.Column="2" Content="Chọn…" Click="BtnBrowseOut_Click"
+                                        Style="{StaticResource OutlineButton}" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" x:Name="lblOutHint"
+                                           Style="{StaticResource HintText}" />
+
+                                <WrapPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
+                                    <CheckBox x:Name="chkZip" Content="Nén ZIP sau khi tạo" IsChecked="True" Margin="3,3,18,3" />
+                                    <CheckBox x:Name="chkOverwrite" Content="Ghi đè nếu thư mục đã có test" Margin="3,3,18,3"
+                                              ToolTip="Mặc định: nếu thư mục đã có test thì tạo thư mục mới _2, _3…" />
+                                    <CheckBox x:Name="chkRebuild" Content="Biên dịch lại lời giải" Margin="3,3,18,3" />
+                                    <CheckBox x:Name="chkZipIncomplete" Content="Vẫn nén khi lời giải lỗi một số test" Margin="3,3,0,3" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Xem trước -->
+                        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                                    <Button x:Name="btnPreview" DockPanel.Dock="Right" Padding="14,6"
+                                            Content="👁 Xem trước test mẫu" Click="BtnPreview_Click"
+                                            Style="{StaticResource OutlineButton}" />
+                                    <StackPanel>
+                                        <TextBlock Text="Xem trước" FontWeight="SemiBold" FontSize="14" />
+                                        <TextBlock x:Name="lblPreviewInfo" Style="{StaticResource HintText}"
+                                                   Text="Sinh thử test đầu tiên với seed đã nhập (không ghi file)." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <TextBox Grid.Row="1" x:Name="txtPreview" Style="{StaticResource MonoTextBox}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Hành động + kết quả -->
+                        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="16" Margin="0">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button x:Name="btnCancel" DockPanel.Dock="Right" Padding="18,9" Content="⏹ Hủy"
+                                            IsEnabled="False" Click="BtnCancel_Click"
+                                            Style="{StaticResource OutlineButton}" />
+                                    <Button x:Name="btnRun" DockPanel.Dock="Right" Padding="22,9" Content="▶ Tạo bộ test"
+                                            FontSize="14" Click="BtnRun_Click" />
+                                    <TextBlock x:Name="lblProgress" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Text="" />
+                                </DockPanel>
+                                <ProgressBar x:Name="barProgress" Height="8" Margin="3,8,3,0"
+                                             Minimum="0" Maximum="100" Value="0" BorderThickness="0"
+                                             Foreground="{DynamicResource AccentBrush}"
+                                             Background="{DynamicResource BorderBrush}" />
+
+                                <Border x:Name="resultPanel" Visibility="Collapsed" Margin="0,12,0,0" Padding="12"
+                                        CornerRadius="8" BorderThickness="1"
+                                        Background="{DynamicResource BackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}">
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button x:Name="btnOpenFolder" Content="📂 Mở thư mục" Padding="12,6"
+                                                    Click="BtnOpenFolder_Click" Style="{StaticResource OutlineButton}" />
+                                            <Button x:Name="btnOpenZip" Content="📦 Hiện file ZIP" Padding="12,6"
+                                                    Click="BtnOpenZip_Click" Style="{StaticResource OutlineButton}" />
+                                            <Button x:Name="btnShowLog" Content="📋 Xem nhật ký" Padding="12,6"
+                                                    Click="BtnShowLog_Click" Style="{StaticResource OutlineButton}" />
+                                        </StackPanel>
+                                        <TextBlock x:Name="lblResult" TextWrapping="Wrap" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ============ TAB 2: NHẬT KÝ ============ -->
+            <TabItem Header="📋 Nhật ký">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="🧹 Xóa nhật ký" Padding="14,6" Click="BtnClearLog_Click"
+                                Style="{StaticResource OutlineButton}" />
+                        <Button Content="📄 Sao chép" Padding="14,6" Click="BtnCopyLog_Click"
+                                Style="{StaticResource OutlineButton}" />
+                        <Button Content="💾 Lưu ra file…" Padding="14,6" Click="BtnSaveLog_Click"
+                                Style="{StaticResource OutlineButton}" />
+                    </StackPanel>
+                    <TextBox Grid.Row="1" x:Name="txtLog" Style="{StaticResource MonoTextBox}" />
+                </Grid>
+            </TabItem>
+
+            <!-- ============ TAB 3: HƯỚNG DẪN ============ -->
+            <TabItem Header="📖 Hướng dẫn">
+                <Border Style="{StaticResource Card}" Margin="10" Padding="20">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <TextBlock x:Name="txtHelp" TextWrapping="Wrap" FontSize="13.5" LineHeight="22" />
+                    </ScrollViewer>
+                </Border>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

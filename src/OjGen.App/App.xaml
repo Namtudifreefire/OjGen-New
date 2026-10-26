@@ -1,0 +1,244 @@
+<Application x:Class="OjGen.Gui.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:OjGen.Gui">
+
+    <Application.Resources>
+        <ResourceDictionary>
+
+            <!-- ✅ Theme TRƯỚC, Controls SAU -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/LightTheme.xaml" />
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- ============ STYLE MẶC ĐỊNH ============ -->
+
+            <Style TargetType="Button" BasedOn="{StaticResource RoundedButton}" />
+            <Style TargetType="TextBox" BasedOn="{StaticResource RoundedTextBox}" />
+            <Style TargetType="PasswordBox" BasedOn="{StaticResource RoundedPasswordBox}" />
+            <Style TargetType="ComboBox" BasedOn="{StaticResource ModernComboBox}" />
+            <Style TargetType="TabControl" BasedOn="{StaticResource ModernTabControl}" />
+
+            <!-- ============ TEXT ============ -->
+
+            <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="Margin" Value="3" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <Style TargetType="Label">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <!-- ============ MENU — BO TRÒN, AN TOÀN ============ -->
+
+            <Style TargetType="Menu">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <!-- ✅ 1 STYLE MENUITEM DUY NHẤT — bao gồm cả bo tròn -->
+            <Style TargetType="MenuItem">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Padding" Value="12,7" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Grid>
+                                <!-- Border bo tròn chứa toàn bộ MenuItem -->
+                                <Border x:Name="Bd"
+                                        Background="{TemplateBinding Background}"
+                                        CornerRadius="6"
+                                        Padding="{TemplateBinding Padding}"
+                                        Margin="3,1"
+                                        SnapsToDevicePixels="True">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Icon" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Icon -->
+                                        <ContentPresenter Grid.Column="0"
+                                                          ContentSource="Icon"
+                                                          VerticalAlignment="Center"
+                                                          Margin="0,0,10,0" />
+
+                                        <!-- Header -->
+                                        <ContentPresenter Grid.Column="1"
+                                                          ContentSource="Header"
+                                                          RecognizesAccessKey="True"
+                                                          VerticalAlignment="Center" />
+
+                                        <!-- Arrow cho submenu -->
+                                        <Path Grid.Column="2"
+                                              x:Name="SubArrow"
+                                              Data="M 0 0 L 4 4 L 0 8 Z"
+                                              Fill="{DynamicResource TextPrimaryBrush}"
+                                              VerticalAlignment="Center"
+                                              Margin="10,0,2,0"
+                                              Visibility="Collapsed" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Popup cho submenu -->
+                                <Popup x:Name="PART_Popup"
+                                       Placement="Right"
+                                       HorizontalOffset="-2"
+                                       VerticalOffset="-3"
+                                       IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                       AllowsTransparency="True"
+                                       Focusable="False"
+                                       PopupAnimation="Fade">
+                                    <Border Background="{DynamicResource SurfaceBrush}"
+                                            BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="4"
+                                            Margin="4,0,0,0"
+                                            MinWidth="200">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="Black"
+                                                              Opacity="0.25"
+                                                              BlurRadius="12"
+                                                              ShadowDepth="2" />
+                                        </Border.Effect>
+                                        <StackPanel IsItemsHost="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                    </Border>
+                                </Popup>
+                            </Grid>
+
+                            <ControlTemplate.Triggers>
+                                <!-- SubmenuHeader: có arrow -->
+                                <Trigger Property="Role" Value="SubmenuHeader">
+                                    <Setter TargetName="SubArrow" Property="Visibility" Value="Visible" />
+                                </Trigger>
+
+                                <!-- Hover -->
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bd" Property="Background"
+                                            Value="{DynamicResource TabHoverBackgroundBrush}" />
+                                </Trigger>
+
+                                <!-- Submenu đang mở -->
+                                <Trigger Property="IsSubmenuOpen" Value="True">
+                                    <Setter TargetName="Bd" Property="Background"
+                                            Value="{DynamicResource TabHoverBackgroundBrush}" />
+                                </Trigger>
+
+                                <!-- Disabled -->
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Foreground"
+                                            Value="{DynamicResource TextSecondaryBrush}" />
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ============ STATUS BAR ============ -->
+
+            <Style TargetType="StatusBar">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="12" />
+            </Style>
+
+            <!-- ============ TOOLTIP ============ -->
+
+            <Style TargetType="ToolTip">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                <Setter Property="Padding" Value="8,4" />
+                <Setter Property="FontSize" Value="12" />
+            </Style>
+
+            <!-- ============ CHECKBOX / RADIO ============ -->
+
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <Style TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <!-- ============ SEPARATOR ============ -->
+
+            <Style TargetType="Separator">
+                <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+                <Setter Property="Height" Value="1" />
+                <Setter Property="Margin" Value="6,4" />
+            </Style>
+
+            <!-- ============ HỘP VĂN BẢN ĐƠN SẮC (nhật ký, xem trước) — có thanh cuộn ============ -->
+
+            <Style x:Key="MonoTextBox" TargetType="TextBox">
+                <Setter Property="Background" Value="{DynamicResource LogBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, Courier New" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="IsReadOnly" Value="True" />
+                <Setter Property="AcceptsReturn" Value="True" />
+                <Setter Property="TextWrapping" Value="NoWrap" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                <Setter Property="Padding" Value="8" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Focusable="False"
+                                              Padding="{TemplateBinding Padding}"
+                                              HorizontalScrollBarVisibility="Auto"
+                                              VerticalScrollBarVisibility="Auto" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ============ NHÃN NHỎ (chú thích) ============ -->
+
+            <Style x:Key="HintText" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="3,0,3,2" />
+            </Style>
+
+            <Style x:Key="FieldLabel" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Margin" Value="3,8,3,0" />
+            </Style>
+
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
