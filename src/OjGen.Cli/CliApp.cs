@@ -277,9 +277,9 @@ internal static class CliApp
             if (sol.Trim().Length == 0) { Err("LỖI: --solution rỗng."); return 2; }
         }
         string outDir = a.Kv.TryGetValue("out", out var od) ? od : Path.Combine(st.OutputRoot, prob.Id);
-        if (!Job.PrepareOutDir(ref outDir, a.Flags.Contains("force") ? ExistingPolicy.Overwrite : ExistingPolicy.NewDir, log, out err))
+        if (!Job.PrepareOutDir(ref outDir, a.Flags.Contains("force") ? ExistingPolicy.Overwrite : ExistingPolicy.NewDir, log, out string? outDirError))
         {
-            Err("LỖI: " + err);
+            Err("LỖI: " + (outDirError ?? "Không thể chuẩn bị thư mục đầu ra."));
             return 2;
         }
         job.OutDir = outDir;
