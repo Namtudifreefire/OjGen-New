@@ -14,7 +14,7 @@ dotnet publish src/OjGen.App/OjGen.App.csproj -c Release -r win-x64 --self-conta
 if %errorlevel% neq 0 goto :fail
 
 echo [4/4] Publish CLI (ojgen.exe)...
-dotnet publish src\OjGen.Cli\OjGen.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish\cli
+dotnet publish src/OjGen.Cli/OjGen.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -p:EnableCompressionInSingleFile=true -o publish/cli-single
 if %errorlevel% neq 0 goto :fail
 
 echo.
