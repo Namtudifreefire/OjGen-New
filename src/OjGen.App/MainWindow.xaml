@@ -81,9 +81,25 @@
                             </Grid.RowDefinitions>
 
                             <StackPanel Grid.Row="0">
-                                <TextBlock Text="Dạng bài" Style="{StaticResource FieldLabel}" />
-                                <TextBlock Text="Chọn theo cấu trúc input; nhãn thuật toán trên QBOJ không phải định dạng input."
+                                <TextBlock Text="Chủ đề thuật toán VNOI / Codeforces" Style="{StaticResource FieldLabel}" />
+                                <TextBlock x:Name="lblAlgorithmHint"
+                                           Text="Tùy chọn: chọn tag để OjGen gợi ý khuôn input; bài mẫu Codeforces mở được từ đây."
                                            Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,0,3,4" />
+                                <ComboBox x:Name="cmbAlgorithmTopic"
+                                          DisplayMemberPath="DisplayName"
+                                          IsTextSearchEnabled="True"
+                                          MaxDropDownHeight="330"
+                                          Margin="0,3,0,7"
+                                          SelectionChanged="CmbAlgorithmTopic_SelectionChanged" />
+                                <TextBlock Text="Dạng chính" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Nhóm cấu trúc input của khuôn. Có thể đổi khuôn nếu đề dùng định dạng khác."
+                                           Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,0,3,4" />
+                                <ComboBox x:Name="cmbMainCategory"
+                                          IsTextSearchEnabled="True"
+                                          MaxDropDownHeight="300"
+                                          Margin="0,3,0,7"
+                                          SelectionChanged="CmbMainCategory_SelectionChanged" />
+                                <TextBlock Text="Dạng phụ / khuôn" Style="{StaticResource FieldLabel}" />
                                 <ComboBox x:Name="cmbProblem"
                                           DisplayMemberPath="Title"
                                           IsTextSearchEnabled="True"

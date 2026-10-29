@@ -9,6 +9,7 @@ public sealed class GridProblem : Problem
 
     public override string Id => "grid";
     public override string Title => "Lưới ký tự";
+    public override string MainCategory => "Ma trận và lưới";
     public override string FormatDescription =>
         "Dòng 1: n m. Tiếp theo n dòng, mỗi dòng là một xâu dài m.\n" +
         "Ký tự lấy từ charset; có thể bật tùy chọn để đặt đúng một ô bắt đầu S và một ô đích T.";

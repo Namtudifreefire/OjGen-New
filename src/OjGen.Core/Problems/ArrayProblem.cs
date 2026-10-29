@@ -11,6 +11,7 @@ public sealed class ArrayProblem : Problem
 {
     public override string Id => "array";
     public override string Title => "Mảng một chiều / hoán vị";
+    public override string MainCategory => "Dãy và truy vấn";
     public override string FormatDescription =>
         "Dòng 1: số nguyên n (minN <= n <= maxN).\n" +
         "Dòng 2: n số nguyên a1 ... an (minVal <= ai <= maxVal), cách nhau một dấu cách.\n" +

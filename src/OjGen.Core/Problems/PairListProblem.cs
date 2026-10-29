@@ -7,6 +7,7 @@ public sealed class PairListProblem : Problem
 {
     public override string Id => "pairs";
     public override string Title => "Danh sách cặp / đoạn";
+    public override string MainCategory => "Danh sách cặp và đoạn";
     public override string FormatDescription =>
         "Dòng 1: n. Tiếp theo n dòng, mỗi dòng có một cặp x y.\n" +
         "Nếu chọn dữ liệu đoạn, mọi cặp thỏa x <= y.";

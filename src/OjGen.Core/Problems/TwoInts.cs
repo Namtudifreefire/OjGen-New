@@ -10,6 +10,7 @@ public sealed class TwoIntsProblem : Problem
 {
     public override string Id => "two_ints";
     public override string Title => "Hai số nguyên a, b";
+    public override string MainCategory => "Số và bộ giá trị";
     public override string FormatDescription =>
         "Một dòng chứa hai số nguyên a b, cách nhau một dấu cách.\n" +
         "  minA <= a <= maxA, minB <= b <= maxB; nếu order = 1 thì luôn có a <= b.\n" +

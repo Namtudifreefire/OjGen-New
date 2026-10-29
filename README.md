@@ -8,7 +8,8 @@ OJGEN 3.0 là công cụ tạo bộ test tự động cho lập trình thi đấ
 
 - **Giao diện GUI:** Thiết kế WPF với chủ đề Sáng, Tối và Tự động.
 - **Dòng lệnh CLI:** Hỗ trợ sử dụng bằng CMD, PowerShell và các script.
-- **12 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây và tùy chỉnh.
+- **14 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây và tùy chỉnh.
+- **Danh mục chủ đề VNOI và Codeforces:** chọn tag thuật toán để OjGen gợi ý khuôn input gần nhất; tag Codeforces có liên kết tới một bài mẫu.
 - **Tái lập dữ liệu:** Có thể tạo lại bộ test tương ứng bằng cùng seed và cấu hình.
 - **Tạo input/output:** Sinh file `.inp` và chạy lời giải chuẩn để tạo file `.out`.
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
@@ -32,12 +33,31 @@ Các phiên bản tải xuống được cung cấp trong mục **Releases** c�
 
 ## 3. Các dạng bài được hỗ trợ
 
+OjGen chia bộ chọn thành **dạng chính → nhánh con** theo cấu trúc input. Các tuỳ chọn trong từng nhánh tiếp tục mô tả biến thể dữ liệu.
+
+| Dạng chính | Nhánh con | Biến thể hiện có |
+|---|---|---|
+| Số và bộ giá trị | `single_n`, `two_ints` | Một số; cặp số có thể ràng buộc thứ tự |
+| Dãy và truy vấn | `array`, `queries`, `prefix_sum_range`, `prefix_subsequence_range` | Mảng ngẫu nhiên/hoán vị/tăng/giảm; cập nhật/truy vấn đoạn; input QBOJ `sumarr`; input QBOJ TDC với truy vấn tổng dãy con bằng tiền tố các phần tử dương |
+| Xâu và ký tự | `string` | Charset chữ, số, nhị phân, DNA hoặc tập ký tự tự chọn; độ dài cố định/ngẫu nhiên |
+| Ma trận và lưới | `matrix`, `grid` | Ma trận số, hai mảng song song, lưới ký tự có thể đặt `S` và `T` |
+| Danh sách cặp và đoạn | `pairs` | Cặp số tổng quát hoặc đoạn `[l, r]` |
+| Đồ thị và cây | `graph`, `tree` | Đồ thị có hướng/vô hướng, trọng số; cây đường thẳng, hình sao, nhị phân hoặc ngẫu nhiên |
+| Nhiều bộ test | `multi_test` | Mỗi bộ con là dãy số hoặc xâu |
+| Dữ liệu tùy chỉnh | `custom` | Khoảng giá trị chung hoặc giới hạn riêng theo vị trí |
+
+Các tiêu đề QBOJ như `greedy`, `prefixsum`, `slidwin`, `two point`, `backtr` và `dynamic` là **chủ đề/thuật toán**. Chúng không chỉ ra duy nhất cấu trúc input, nên được dùng để gợi ý nhánh dữ liệu sau khi đọc đề, không thay cho dạng chính.
+
+GUI có bộ chọn tag thuật toán từ [VNOI](https://oj.vnoi.info/tags/) và [problemset Codeforces](https://codeforces.com/api/problemset.problems) (đồ thị, cấu trúc dữ liệu, xâu, quy hoạch động, toán, hình học, tham lam, ...). Chọn tag sẽ chuyển sang khuôn input phù hợp nhất hiện có; với tag Codeforces, giao diện cũng hiện liên kết tới một bài mẫu công khai. Đối chiếu định dạng input và giới hạn của đề mẫu trước khi sinh test: tag không xác định duy nhất input hay lời giải. Để tạo file output, hãy chọn lời giải chuẩn tương ứng trong ô **Lời giải chuẩn**.
+
 | Dạng bài | Mô tả |
 |---|---|
 | `single_n` | Bài toán sử dụng tham số số nguyên N |
 | `two_ints` | Bài toán sử dụng hai số nguyên |
 | `array` | Bài toán liên quan đến mảng |
 | `queries` | Bài toán có các truy vấn |
+| `prefix_sum_range` | Mảng và truy vấn tổng đoạn theo khuôn QBOJ `sumarr` |
+| `prefix_subsequence_range` | Khuôn truy vấn tiền tố theo bài QBOJ `Tổng Dãy Con` (TDC) |
 | `string` | Bài toán xử lý chuỗi |
 | `matrix` | Ma trận số hoặc hai mảng cùng độ dài |
 | `multi_test` | Nhiều bộ test, mỗi bộ là mảng số hoặc xâu |

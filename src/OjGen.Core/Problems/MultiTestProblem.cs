@@ -9,6 +9,7 @@ public sealed class MultiTestProblem : Problem
 
     public override string Id => "multi_test";
     public override string Title => "Nhiều bộ test (mảng / xâu)";
+    public override string MainCategory => "Nhiều bộ test";
     public override string FormatDescription =>
         "Dòng 1: số bộ test T. Mỗi bộ gồm một dòng n, sau đó một dòng dữ liệu dài n.\n" +
         "Chọn dữ liệu là dãy số nguyên trong [minVal, maxVal] hoặc xâu trong charset.\n" +

@@ -10,6 +10,7 @@ public sealed class SingleNProblem : Problem
 {
     public override string Id => "single_n";
     public override string Title => "Một số nguyên n";
+    public override string MainCategory => "Số và bộ giá trị";
     public override string FormatDescription =>
         "Một dòng duy nhất chứa số nguyên n (minVal <= n <= maxVal).\n" +
         "Ví dụ:\n  123456\n";

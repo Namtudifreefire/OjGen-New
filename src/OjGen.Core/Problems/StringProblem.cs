@@ -11,6 +11,7 @@ public sealed class StringProblem : Problem
 {
     public override string Id => "string";
     public override string Title => "Xâu ký tự";
+    public override string MainCategory => "Xâu và ký tự";
     public override string FormatDescription =>
         "Nếu printLen = 1: dòng 1 là độ dài L của xâu.\n" +
         "Dòng tiếp theo: xâu s gồm L ký tự (minLen <= L <= maxLen) lấy từ tập charset.\n" +

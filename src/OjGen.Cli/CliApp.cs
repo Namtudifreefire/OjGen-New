@@ -50,8 +50,12 @@ internal static class CliApp
     private static string ListText()
     {
         var s = new System.Text.StringBuilder("Các dạng bài có sẵn:\n");
-        foreach (var p in Problems.All)
-            s.Append("  ").Append(p.Id).Append(' ', p.Id.Length < 10 ? 10 - p.Id.Length : 1).Append(p.Title).Append('\n');
+        foreach (var group in Problems.All.GroupBy(p => p.MainCategory))
+        {
+            s.Append('\n').Append(group.Key).Append(":\n");
+            foreach (var p in group)
+                s.Append("  ").Append(p.Id).Append(' ', p.Id.Length < 10 ? 10 - p.Id.Length : 1).Append(p.Title).Append('\n');
+        }
         s.Append("\nXem chi tiết: ojgen --info <dạng>\n");
         return s.ToString();
     }
@@ -59,7 +63,9 @@ internal static class CliApp
     private static string InfoText(Problem p)
     {
         var s = new System.Text.StringBuilder();
-        s.Append(p.Id).Append(" - ").Append(p.Title).Append("\n\nĐỊNH DẠNG INPUT\n");
+        s.Append(p.Id).Append(" - ").Append(p.Title)
+            .Append("\nNhóm chính: ").Append(p.MainCategory)
+            .Append("\n\nĐỊNH DẠNG INPUT\n");
         foreach (var line in p.FormatDescription.Split('\n'))
             if (line.Length > 0) s.Append("  ").Append(line).Append('\n');
         s.Append("\nTHAM SỐ (--tên giá_trị)\n");

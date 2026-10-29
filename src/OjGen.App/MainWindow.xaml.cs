@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using Microsoft.Win32;
 using OjGen.Core;
@@ -25,6 +26,9 @@ public partial class MainWindow : Window
     private bool _running;
     private JobResult? _lastResult;
     private bool _loading = true;
+    private bool _updatingSubtypeList;
+    private bool _applyingAlgorithmTopic;
+    private string _preferredProblemId = "";
 
     public MainWindow()
     {
@@ -36,10 +40,14 @@ public partial class MainWindow : Window
         _log.ProgressChanged += OnProgress;
 
         txtHelp.Text = HelpContent.Text;
-        cmbProblem.ItemsSource = Problems.All;
-
         string last = AppRegistry.GetString("LastProblem", "");
-        cmbProblem.SelectedItem = Problems.Find(last) ?? Problems.All[0];
+        var initialProblem = Problems.Find(last) ?? Problems.All[0];
+        _preferredProblemId = initialProblem.Id;
+        cmbAlgorithmTopic.ItemsSource = AlgorithmTopics.All;
+        cmbAlgorithmTopic.SelectedIndex = -1;
+        cmbMainCategory.ItemsSource = Problems.All.Select(p => p.MainCategory).Distinct().ToList();
+        cmbMainCategory.SelectedItem = initialProblem.MainCategory;
+        SetSubtypeOptions(initialProblem.MainCategory, initialProblem.Id);
 
         mnuAutoTheme.IsChecked = AutoThemeService.IsEnabled;
         UpdateAutoThemeHeader();
@@ -52,9 +60,81 @@ public partial class MainWindow : Window
 
     // ============================================================ DẠNG BÀI / FORM
 
+    private void CmbMainCategory_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || _applyingAlgorithmTopic || cmbMainCategory.SelectedItem is not string category) return;
+        cmbAlgorithmTopic.SelectedItem = null;
+        SetSubtypeOptions(category, "");
+    }
+
+    private void CmbAlgorithmTopic_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || _applyingAlgorithmTopic) return;
+        if (cmbAlgorithmTopic.SelectedItem is not AlgorithmTopic topic)
+        {
+            lblAlgorithmHint.Text = "Tùy chọn: chọn một chủ đề để OjGen gợi ý khuôn input phù hợp.";
+            return;
+        }
+
+        var recommended = Problems.Find(topic.RecommendedProblemId);
+        if (recommended == null)
+        {
+            lblAlgorithmHint.Text = "Chưa có khuôn input phù hợp trong OjGen.";
+            return;
+        }
+
+        _applyingAlgorithmTopic = true;
+        try
+        {
+            cmbMainCategory.SelectedItem = recommended.MainCategory;
+            SetSubtypeOptions(recommended.MainCategory, recommended.Id);
+            lblAlgorithmHint.Inlines.Clear();
+            lblAlgorithmHint.Inlines.Add(new Run($"Khuôn input gợi ý: {recommended.Title}. "));
+            if (topic.ExampleProblemUrl is { } exampleUrl && topic.ExampleProblem is { } exampleProblem)
+            {
+                lblAlgorithmHint.Inlines.Add(new Run("Bài mẫu: "));
+                var link = new Hyperlink(new Run(exampleProblem)) { NavigateUri = new Uri(exampleUrl) };
+                link.RequestNavigate += (_, e) =>
+                {
+                    OpenPath(e.Uri.AbsoluteUri);
+                    e.Handled = true;
+                };
+                lblAlgorithmHint.Inlines.Add(link);
+                lblAlgorithmHint.Inlines.Add(new Run(". "));
+            }
+            lblAlgorithmHint.Inlines.Add(new Run("Hãy chỉnh giới hạn theo đề và gắn lời giải chuẩn để tạo output."));
+        }
+        finally
+        {
+            _applyingAlgorithmTopic = false;
+        }
+    }
+
+    private void SetSubtypeOptions(string category, string preferredId)
+    {
+        var options = Problems.All.Where(p => p.MainCategory == category).ToList();
+        if (options.Count == 0) return;
+
+        Problem selected = options.FirstOrDefault(p => p.Id == preferredId) ?? options[0];
+        _updatingSubtypeList = true;
+        cmbProblem.ItemsSource = options;
+        cmbProblem.SelectedItem = selected;
+        _updatingSubtypeList = false;
+        ApplyProblem(selected);
+    }
+
     private void CmbProblem_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (cmbProblem.SelectedItem is not Problem p) return;
+        if (_updatingSubtypeList || cmbProblem.SelectedItem is not Problem p) return;
+        if (!_applyingAlgorithmTopic && cmbAlgorithmTopic.SelectedItem is AlgorithmTopic topic &&
+            topic.RecommendedProblemId != p.Id)
+            cmbAlgorithmTopic.SelectedItem = null;
+        ApplyProblem(p);
+    }
+
+    private void ApplyProblem(Problem p)
+    {
+        _preferredProblemId = p.Id;
         _model = new ConfigModel(p);
         _form = new ParamForm(_model, paramHost);
         _form.Changed += OnFormChanged;
@@ -82,6 +162,8 @@ public partial class MainWindow : Window
         btnRun.IsEnabled = !_running && formValid;
         btnPreview.IsEnabled = !_running && formValid;
         btnCancel.IsEnabled = _running;
+        cmbAlgorithmTopic.IsEnabled = !_running;
+        cmbMainCategory.IsEnabled = !_running;
         cmbProblem.IsEnabled = !_running;
         mnuSettings.IsEnabled = !_running;
         mnuRegen.IsEnabled = !_running;

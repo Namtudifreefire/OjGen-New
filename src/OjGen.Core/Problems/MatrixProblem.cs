@@ -9,6 +9,7 @@ public sealed class MatrixProblem : Problem
 
     public override string Id => "matrix";
     public override string Title => "Ma trận / hai mảng (doublearr)";
+    public override string MainCategory => "Ma trận và lưới";
     public override string FormatDescription =>
         "Chọn một trong ba bố cục:\n" +
         "  0: dòng đầu n m, tiếp theo n dòng, mỗi dòng m số.\n" +

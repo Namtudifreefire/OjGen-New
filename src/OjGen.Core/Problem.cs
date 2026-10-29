@@ -14,6 +14,8 @@ public abstract class Problem
 {
     public abstract string Id { get; }
     public abstract string Title { get; }
+    /// <summary>Nhóm cấu trúc input chính, dùng để chia nhóm các nhánh trong GUI.</summary>
+    public virtual string MainCategory => "Khác";
     public abstract string FormatDescription { get; }
     public abstract IReadOnlyList<ParamSpec> Params { get; }
 
@@ -162,14 +164,16 @@ public static class Problems
         new TwoIntsProblem(),
         new ArrayProblem(),
         new QueriesProblem(),
+        new PrefixSumRangeProblem(),
+        new TdcPrefixSumProblem(),
         new StringProblem(),
         new MatrixProblem(),
-        new MultiTestProblem(),
         new GridProblem(),
         new PairListProblem(),
-        new TreeProblem(),
-        new CustomProblem(),
         new GraphProblem(),
+        new TreeProblem(),
+        new MultiTestProblem(),
+        new CustomProblem(),
         // new MyProblem(),   // <- thêm module mới tại đây
     };
 

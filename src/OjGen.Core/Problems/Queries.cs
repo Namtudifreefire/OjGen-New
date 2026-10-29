@@ -14,6 +14,7 @@ public sealed class QueriesProblem : Problem
 {
     public override string Id => "queries";
     public override string Title => "Mảng và truy vấn";
+    public override string MainCategory => "Dãy và truy vấn";
     public override string FormatDescription =>
         "Dòng 1: n q.\n" +
         "Dòng 2: n số nguyên a1 ... an (minVal <= ai <= maxVal).\n" +

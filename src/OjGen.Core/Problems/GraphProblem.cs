@@ -21,6 +21,7 @@ public sealed class GraphProblem : Problem
 
     public override string Id => "graph";
     public override string Title => "Đồ thị";
+    public override string MainCategory => "Đồ thị và cây";
     public override string FormatDescription =>
         "Dòng 1: n m (số đỉnh, số cạnh).\n" +
         "m dòng tiếp: u v (hoặc u v w khi weighted = 1), đỉnh đánh số 1..n.\n" +

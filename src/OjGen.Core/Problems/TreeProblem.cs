@@ -9,6 +9,7 @@ public sealed class TreeProblem : Problem
 
     public override string Id => "tree";
     public override string Title => "Cây";
+    public override string MainCategory => "Đồ thị và cây";
     public override string FormatDescription =>
         "Dòng 1: n. Có thể ghi n-1 cạnh u v [w], hoặc ghi n-1 cha của các đỉnh 2..n trên một dòng.\n" +
         "Cấu hình chọn kiểu cây: ngẫu nhiên, đường thẳng, hình sao hoặc cây nhị phân.\n" +

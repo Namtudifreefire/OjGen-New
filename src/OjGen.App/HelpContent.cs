@@ -7,7 +7,7 @@ internal static class HelpContent
 @"OjGen - TRÌNH TẠO BỘ TEST CHO BÀI LẬP TRÌNH THI ĐẤU
 
 1. QUY TRÌNH NHANH
-   a) Chọn 'Dạng bài' và điền tham số ở cột trái (ô sai sẽ viền đỏ, lỗi hiện ở cuối cột).
+   a) Chọn 'Dạng chính', chọn 'Dạng phụ / khuôn' phù hợp với input, rồi điền tham số ở cột trái (ô sai sẽ viền đỏ, lỗi hiện ở cuối cột).
    b) Nhập số lượng test, seed (để trống = ngẫu nhiên), chọn lời giải chuẩn (.cpp / .py / .exe) nếu muốn tạo cả file .out.
    c) Bấm 'Xem trước test mẫu' để kiểm tra dữ liệu, rồi bấm 'Tạo bộ test'.
    d) Kết quả nằm trong thư mục đầu ra: test01.inp, test01.out, ..., ojgen_info.txt (ghi lại seed và cấu hình) và file .zip cùng tên thư mục.

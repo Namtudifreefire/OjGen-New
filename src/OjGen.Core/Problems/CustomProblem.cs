@@ -20,6 +20,7 @@ public sealed class CustomProblem : Problem
 
     public override string Id => "custom";
     public override string Title => "Tùy chỉnh: dãy số nguyên, giới hạn chung hoặc riêng từng vị trí";
+    public override string MainCategory => "Dữ liệu tùy chỉnh";
     public override string FormatDescription =>
         "Mỗi test gồm n số nguyên (n cố định cho mọi test).\n" +
         "  mode = 1: mọi số trong [min, max].\n" +
