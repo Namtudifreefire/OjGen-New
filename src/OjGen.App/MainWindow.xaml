@@ -82,8 +82,13 @@
 
                             <StackPanel Grid.Row="0">
                                 <TextBlock Text="Dạng bài" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Chọn theo cấu trúc input; nhãn thuật toán trên QBOJ không phải định dạng input."
+                                           Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,0,3,4" />
                                 <ComboBox x:Name="cmbProblem"
                                           DisplayMemberPath="Title"
+                                          IsTextSearchEnabled="True"
+                                          MaxDropDownHeight="430"
+                                          ToolTip="{Binding SelectedItem.FormatDescription, ElementName=cmbProblem}"
                                           Margin="0,3,0,3"
                                           SelectionChanged="CmbProblem_SelectionChanged" />
                             </StackPanel>

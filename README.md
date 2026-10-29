@@ -8,7 +8,7 @@ OJGEN 3.0 là công cụ tạo bộ test tự động cho lập trình thi đấ
 
 - **Giao diện GUI:** Thiết kế WPF với chủ đề Sáng, Tối và Tự động.
 - **Dòng lệnh CLI:** Hỗ trợ sử dụng bằng CMD, PowerShell và các script.
-- **7 dạng bài:** Single N, Two Integers, Array, Queries, String, Custom và Graph.
+- **12 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây và tùy chỉnh.
 - **Tái lập dữ liệu:** Có thể tạo lại bộ test tương ứng bằng cùng seed và cấu hình.
 - **Tạo input/output:** Sinh file `.inp` và chạy lời giải chuẩn để tạo file `.out`.
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
@@ -39,10 +39,18 @@ Các phiên bản tải xuống được cung cấp trong mục **Releases** c�
 | `array` | Bài toán liên quan đến mảng |
 | `queries` | Bài toán có các truy vấn |
 | `string` | Bài toán xử lý chuỗi |
+| `matrix` | Ma trận số hoặc hai mảng cùng độ dài |
+| `multi_test` | Nhiều bộ test, mỗi bộ là mảng số hoặc xâu |
+| `grid` | Lưới ký tự, tùy chọn ô bắt đầu `S` và đích `T` |
+| `pairs` | Danh sách cặp số hoặc đoạn `[l, r]` |
+| `tree` | Cây dạng danh sách cạnh hoặc danh sách cha, có thể có trọng số |
 | `custom` | Tạo dữ liệu theo các khoảng giá trị tùy chỉnh |
 | `graph` | Bài toán liên quan đến đồ thị |
 
 Với dạng `custom`, người dùng có thể thiết lập nhiều khoảng giá trị, chẳng hạn `1:10,50:100,-20:20`.
+Với `array`, có thể tạo hoán vị `1..n`; `matrix` hỗ trợ cả dạng hai mảng trên hai dòng.
+
+Trang QBOJ dùng các nhãn `backtr`, `basic`, `binary`, `chaotic`, `Chưa phân loại`, `codeendcode`, `doublearr`, `dynamic`, `Estinum`, `greedy`, `Hash`, `map`, `mark`, `markstr`, `math`, `normal`, `Numerals`, `numstr`, `prefixcount`, `prefixmaxmin`, `prefixsum`, `Recipe`, `rule`, `slidwin`, `Sort`, `special num`, `subarr`, `subarr1`, `two point` và `word` để mô tả chủ đề. Những nhãn này không quy định một khuôn input duy nhất; OjGen chọn mẫu theo cấu trúc dữ liệu để dùng được cho nhiều bài trong cùng nhóm.
 
 ## 4. Ví dụ sử dụng CLI
 

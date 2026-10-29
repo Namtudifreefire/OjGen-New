@@ -163,6 +163,11 @@ public static class Problems
         new ArrayProblem(),
         new QueriesProblem(),
         new StringProblem(),
+        new MatrixProblem(),
+        new MultiTestProblem(),
+        new GridProblem(),
+        new PairListProblem(),
+        new TreeProblem(),
         new CustomProblem(),
         new GraphProblem(),
         // new MyProblem(),   // <- thêm module mới tại đây

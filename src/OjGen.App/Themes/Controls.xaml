@@ -125,17 +125,35 @@
                                                   ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                                   IsHitTestVisible="False" />
-                                <Path Grid.Column="1"
-                                      Data="M 0 0 L 4 4 L 8 0 Z"
-                                      Fill="{DynamicResource TextPrimaryBrush}"
-                                      Margin="0,0,10,0"
-                                      VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="1"
+                                              Width="32"
+                                              Margin="0,0,4,0"
+                                              Background="Transparent"
+                                              BorderThickness="0"
+                                              Focusable="False"
+                                              IsTabStop="False"
+                                              ClickMode="Press"
+                                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="{TemplateBinding Background}">
+                                                <Path Data="M 0 0 L 4 4 L 8 0 Z"
+                                                      Fill="{DynamicResource TextPrimaryBrush}"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                            </Border>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
                             </Grid>
                         </Border>
 
                         <Popup x:Name="PART_Popup"
                                Placement="Bottom"
-                               IsOpen="{TemplateBinding IsDropDownOpen}"
+                               PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                               IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                               StaysOpen="False"
+                               Focusable="False"
                                AllowsTransparency="True"
                                PopupAnimation="Slide">
                             <Border Background="{DynamicResource SurfaceBrush}"
@@ -145,8 +163,8 @@
                                     MinWidth="{TemplateBinding ActualWidth}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Margin="0,2,0,0">
-                                <ScrollViewer>
-                                    <StackPanel IsItemsHost="True" />
+                                <ScrollViewer CanContentScroll="True">
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
                             </Border>
                         </Popup>
