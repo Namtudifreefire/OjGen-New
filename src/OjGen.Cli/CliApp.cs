@@ -12,6 +12,8 @@ internal static class CliApp
         s.Append("CÁCH DÙNG\n");
         s.Append("  ojgen --list                       Liệt kê các dạng bài (module)\n");
         s.Append("  ojgen --info <dạng>                Xem định dạng input và tham số của một dạng bài\n");
+        s.Append("  ojgen --topics [--topic-source S]  Liệt kê chủ đề thuật toán từ các OJ\n");
+        s.Append("  ojgen --topic <nguồn:nhãn>         Xem bài mẫu và khuôn input được gợi ý\n");
         s.Append("  ojgen --problem <dạng> [tùy chọn]  Sinh bộ test\n");
         s.Append("  ojgen --regen-out <thư mục> --solution <file>   Tạo lại .out cho thư mục test có sẵn\n");
         s.Append("  ojgen --zip-dir <thư mục>          Đóng gói ZIP thư mục test có sẵn\n");
@@ -36,8 +38,15 @@ internal static class CliApp
         s.Append("  --no-compress        ZIP chỉ lưu, không nén\n");
         s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini trong thư mục hiện tại)\n");
         s.Append("  --<tham số> GIÁ_TRỊ  Tham số riêng của dạng bài, xem bằng --info <dạng>\n\n");
+        s.Append("CHỦ ĐỀ THUẬT TOÁN\n");
+        s.Append("  --topics liệt kê chủ đề VNOI, QBOJ, Codeforces và LQDOJ; dùng --topic-source để lọc nguồn.\n");
+        s.Append("  --topic chỉ hiển thị chi tiết nếu đứng một mình; khi kèm tùy chọn sinh test, OjGen dùng khuôn gợi ý\n");
+        s.Append("  làm --problem mặc định. Chủ đề là gợi ý cấu trúc input, không thay cho việc đọc đề và giới hạn.\n\n");
         s.Append("VÍ DỤ\n");
         s.Append("  ojgen --list\n");
+        s.Append("  ojgen --topics --topic-source LQDOJ\n");
+        s.Append("  ojgen --topic \"LQDOJ:greedy (tham lam)\"\n");
+        s.Append("  ojgen --topic \"LQDOJ:greedy (tham lam)\" --tests 20 --seed 2024\n");
         s.Append("  ojgen --problem array --tests 20 --seed 2024\n");
         s.Append("  ojgen --problem custom --tests 100 --seed 2024\n");
         s.Append("  ojgen --problem custom --tests 100 --n 20 --min -1000 --max 1000 --solution sol.cpp\n");
@@ -59,6 +68,88 @@ internal static class CliApp
         s.Append("\nXem chi tiết: ojgen --info <dạng>\n");
         return s.ToString();
     }
+
+    private static string TopicKey(AlgorithmTopic topic) => $"{topic.Source}:{topic.Name}";
+
+    private static string ListTopicsText(string? sourceFilter)
+    {
+        var s = new System.Text.StringBuilder("Chủ đề thuật toán có sẵn:\n");
+        var topics = AlgorithmTopics.All
+            .Where(t => sourceFilter == null || string.Equals(t.Source, sourceFilter, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.Source, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in topics.GroupBy(t => t.Source))
+        {
+            s.Append('\n').Append(group.Key).Append(":\n");
+            foreach (var topic in group)
+            {
+                s.Append("  ").Append(TopicKey(topic))
+                    .Append(" | ").Append(topic.RecommendedProblemId);
+                if (!string.IsNullOrWhiteSpace(topic.Category)) s.Append(" | ").Append(topic.Category);
+                if (topic.ExampleProblem is { Length: > 0 } sample) s.Append(" | bài mẫu: ").Append(sample);
+                s.Append('\n');
+            }
+        }
+        s.Append("\nXem chi tiết: ojgen --topic \"<nguồn>:<nhãn>\"\n");
+        return s.ToString();
+    }
+
+    private static bool TryResolveTopic(string query, out AlgorithmTopic? topic, out string error)
+    {
+        var all = AlgorithmTopics.All;
+        var matches = all.Where(t =>
+            string.Equals(TopicKey(t), query, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(t.DisplayName, query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (matches.Count == 0)
+            matches = all.Where(t => string.Equals(t.Name, query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (matches.Count == 1)
+        {
+            topic = matches[0];
+            error = "";
+            return true;
+        }
+
+        topic = null;
+        if (matches.Count > 1)
+        {
+            error = $"Chủ đề '{query}' bị trùng giữa nhiều nguồn. Dùng một khóa đầy đủ:\n  " +
+                string.Join("\n  ", matches.Select(TopicKey));
+        }
+        else
+        {
+            error = $"Không tìm thấy chủ đề '{query}'. Dùng ojgen --topics để xem danh mục.";
+        }
+        return false;
+    }
+
+    private static string TopicInfoText(AlgorithmTopic topic)
+    {
+        var s = new System.Text.StringBuilder();
+        s.AppendLine(TopicKey(topic));
+        if (!string.IsNullOrWhiteSpace(topic.Category)) s.AppendLine("Nhóm: " + topic.Category);
+        var recommended = Problems.Find(topic.RecommendedProblemId);
+        if (recommended == null)
+        {
+            s.AppendLine("Chưa có khuôn input tương ứng trong OjGen.");
+            return s.ToString();
+        }
+
+        s.AppendLine($"Khuôn input gợi ý: --problem {recommended.Id} ({recommended.Title})");
+        if (topic.ExampleProblemUrl is { } exampleUrl && topic.ExampleProblem is { } exampleProblem)
+            s.AppendLine($"Bài mẫu: {exampleProblem} — {exampleUrl}");
+        s.AppendLine($"Dùng để sinh test: ojgen --topic \"{TopicKey(topic)}\" --tests 20 --seed 2024");
+        s.AppendLine();
+        s.Append(InfoText(recommended));
+        return s.ToString();
+    }
+
+    private static bool HasGenerationOptions(Args args) =>
+        args.Kv.Keys.Any(k => k is not "topic" and not "settings") ||
+        args.Flags.Any(f => f is not "help" and not "h" and not "version" and not "list" and not "topics" and not "selftest");
 
     private static string InfoText(Problem p)
     {
@@ -94,13 +185,13 @@ internal static class CliApp
 
     private static readonly HashSet<string> FlagOnly = new()
     {
-        "help", "h", "list", "version", "selftest", "force", "no-zip", "zip", "zip-incomplete", "rebuild", "no-compress",
+        "help", "h", "list", "topics", "version", "selftest", "force", "no-zip", "zip", "zip-incomplete", "rebuild", "no-compress",
     };
 
     private static readonly HashSet<string> GlobalKeys = new()
     {
         "problem", "tests", "seed", "solution", "out", "timeout", "max-output-mb", "memory-mb", "compiler", "cxxflags",
-        "prefix", "info", "regen-out", "zip-dir", "python", "settings",
+        "prefix", "info", "regen-out", "zip-dir", "python", "settings", "topic", "topic-source",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -202,6 +293,40 @@ internal static class CliApp
         if (a.Flags.Contains("version")) { Console.Out.WriteLine("ojgen " + Util.Version); return 0; }
         if (a.Flags.Contains("list")) { Console.Out.Write(ListText()); return 0; }
         if (a.Flags.Contains("selftest")) return SelfTest.Run(log);
+        if (a.Flags.Contains("topics"))
+        {
+            if (a.Kv.ContainsKey("topic")) { Err("LỖI: không dùng --topic cùng --topics."); return 2; }
+            var sources = AlgorithmTopics.All.Select(t => t.Source).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var sourceFilter = a.Kv.GetValueOrDefault("topic-source");
+            if (sourceFilter != null && !sources.Contains(sourceFilter, StringComparer.OrdinalIgnoreCase))
+            {
+                Err("LỖI: nguồn chủ đề không hợp lệ. Nguồn có sẵn: " + string.Join(", ", sources));
+                return 2;
+            }
+            Console.Out.Write(ListTopicsText(sourceFilter));
+            return 0;
+        }
+        if (a.Kv.ContainsKey("topic-source"))
+        {
+            Err("LỖI: --topic-source chỉ dùng cùng --topics.");
+            return 2;
+        }
+        AlgorithmTopic? selectedTopic = null;
+        if (a.Kv.TryGetValue("topic", out var topicQuery))
+        {
+            if (a.Kv.ContainsKey("info")) { Err("LỖI: dùng --topic hoặc --info trong một lần gọi."); return 2; }
+            if (!TryResolveTopic(topicQuery, out selectedTopic, out err)) { Err("LỖI: " + err); return 2; }
+            if (!HasGenerationOptions(a))
+            {
+                Console.Out.Write(TopicInfoText(selectedTopic!));
+                return 0;
+            }
+            if (a.Kv.ContainsKey("regen-out") || a.Kv.ContainsKey("zip-dir"))
+            {
+                Err("LỖI: --topic dùng để chọn khuôn sinh test, không dùng cùng --regen-out hoặc --zip-dir.");
+                return 2;
+            }
+        }
         if (a.Kv.TryGetValue("info", out var infoId))
         {
             var ip = Problems.Find(infoId);
@@ -222,13 +347,22 @@ internal static class CliApp
             if (!a.Kv.TryGetValue("solution", out var rsol)) { Err("LỖI: --regen-out cần --solution <file lời giải>."); return 2; }
             return Job.RegenerateOutputs(rdir, rsol, st, zipMode, a.Flags.Contains("rebuild"), a.Flags.Contains("zip-incomplete"), log).ExitCode;
         }
-        if (!a.Kv.TryGetValue("problem", out var pid))
+        string pid;
+        if (a.Kv.TryGetValue("problem", out var explicitProblemId)) pid = explicitProblemId;
+        else if (selectedTopic is not null)
+        {
+            pid = selectedTopic.RecommendedProblemId;
+            Console.Out.WriteLine($"Chủ đề {TopicKey(selectedTopic)}: dùng khuôn input gợi ý --problem {pid}.");
+        }
+        else
         {
             Err("LỖI: thiếu --problem <dạng>. Dùng --list để xem các dạng bài.");
             return 2;
         }
         var prob = Problems.Find(pid);
         if (prob == null) { Err($"LỖI: không có dạng bài '{pid}'.\n{ListText()}"); return 2; }
+        if (selectedTopic is not null && prob.Id != selectedTopic.RecommendedProblemId)
+            Console.Out.WriteLine($"Chủ đề {TopicKey(selectedTopic)} gợi ý --problem {selectedTopic.RecommendedProblemId}; đang dùng dạng --problem {prob.Id} theo yêu cầu.");
 
         var job = new JobSpec { Problem = prob, Cfg = prob.DefaultConfig() };
         var explicitKeys = new HashSet<string>();

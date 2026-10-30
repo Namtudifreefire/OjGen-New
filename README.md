@@ -8,8 +8,8 @@ OJGEN 3.0 là công cụ tạo bộ test tự động cho lập trình thi đấ
 
 - **Giao diện GUI:** Thiết kế WPF với chủ đề Sáng, Tối và Tự động.
 - **Dòng lệnh CLI:** Hỗ trợ sử dụng bằng CMD, PowerShell và các script.
-- **14 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây và tùy chỉnh.
-- **Danh mục chủ đề QBOJ, VNOI, Codeforces và LQDOJ:** chọn tag thuật toán để OjGen gợi ý khuôn input gần nhất; bài mẫu mở được từ giao diện.
+- **15 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây, tùy chỉnh và khuôn cờ vua.
+- **Danh mục chủ đề QBOJ, VNOI, Codeforces và LQDOJ:** chọn tag thuật toán trong GUI hoặc CLI để OjGen gợi ý khuôn input gần nhất; xem bài mẫu từ giao diện hoặc dòng lệnh.
 - **Tái lập dữ liệu:** Có thể tạo lại bộ test tương ứng bằng cùng seed và cấu hình.
 - **Tạo input/output:** Sinh file `.inp` và chạy lời giải chuẩn để tạo file `.out`.
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
@@ -44,7 +44,7 @@ OjGen chia bộ chọn thành **dạng chính → nhánh con** theo cấu trúc 
 | Danh sách cặp và đoạn | `pairs` | Cặp số tổng quát hoặc đoạn `[l, r]` |
 | Đồ thị và cây | `graph`, `tree` | Đồ thị có hướng/vô hướng, trọng số; cây đường thẳng, hình sao, nhị phân hoặc ngẫu nhiên |
 | Nhiều bộ test | `multi_test` | Mỗi bộ con là dãy số hoặc xâu |
-| Dữ liệu tùy chỉnh | `custom` | Khoảng giá trị chung hoặc giới hạn riêng theo vị trí |
+| Dữ liệu tùy chỉnh | `custom`, `chess_moves` | Khoảng số chung/riêng; vị trí quân cờ trên bàn 8×8 trống, chọn quân và góc/cạnh/trung tâm |
 
 Các tiêu đề QBOJ như `greedy`, `prefixsum`, `slidwin`, `two point`, `backtr` và `dynamic` là **chủ đề/thuật toán**. Chúng không chỉ ra duy nhất cấu trúc input, nên được dùng để gợi ý nhánh dữ liệu sau khi đọc đề, không thay cho dạng chính.
 
@@ -65,19 +65,35 @@ GUI có bộ chọn tag thuật toán từ [danh sách bài QBOJ](http://qboj.za
 | `pairs` | Danh sách cặp số hoặc đoạn `[l, r]` |
 | `tree` | Cây dạng danh sách cạnh hoặc danh sách cha, có thể có trọng số |
 | `custom` | Tạo dữ liệu theo các khoảng giá trị tùy chỉnh |
+| `chess_moves` | Vị trí quân cờ (K/Q/R/B/N/P) và màu trên bàn 8×8 trống; tọa độ hàng/cột từ 0 đến 7 |
 | `graph` | Bài toán liên quan đến đồ thị |
 
 Với dạng `custom`, người dùng có thể thiết lập nhiều khoảng giá trị, chẳng hạn `1:10,50:100,-20:20`.
+Với dạng `chess_moves`, chọn một quân cụ thể hoặc ngẫu nhiên; vị trí được lấy ngẫu nhiên, ở góc, ở cạnh hoặc vùng trung tâm. Lời giải chuẩn đã chọn sẽ tạo output gồm số ô đi được và tọa độ đích.
 Với `array`, có thể tạo hoán vị `1..n`; `matrix` hỗ trợ cả dạng hai mảng trên hai dòng.
 
 Trang QBOJ có các nhãn `backtr`, `basic`, `binary`, `chaotic`, `Chưa phân loại`, `codeendcode`, `doublearr`, `dynamic`, `Estinum`, `greedy`, `Hash`, `map`, `mark`, `markstr`, `math`, `normal`, `Numerals`, `numstr`, `prefixcount`, `prefixmaxmin`, `prefixsum`, `Recipe`, `rule`, `slidwin`, `Sort`, `special num`, `subarr`, `subarr1`, `two point` và `word`. OjGen đưa các nhãn có ý nghĩa chủ đề vào bộ chọn và loại `Chưa phân loại`; tại thời điểm đọc, `Hash` và `normal` không gắn với bài nào trong 1.069 dòng danh sách. Những nhãn này không quy định một khuôn input duy nhất; OjGen chọn mẫu theo cấu trúc dữ liệu để dùng được cho nhiều bài trong cùng nhóm.
 
 ## 4. Ví dụ sử dụng CLI
 
-Liệt kê các dạng bài:
+Liệt kê các dạng bài và chủ đề thuật toán:
 
 ```bash
 ojgen --list
+ojgen --topics
+ojgen --topics --topic-source LQDOJ
+```
+
+Xem một chủ đề, bài mẫu và khuôn input được gợi ý:
+
+```bash
+ojgen --topic "LQDOJ:greedy (tham lam)"
+```
+
+Sinh test từ khuôn được gợi ý bởi chủ đề (có thể chỉ rõ `--problem` để chọn khuôn khác):
+
+```bash
+ojgen --topic "LQDOJ:greedy (tham lam)" --tests 20 --seed 2024
 ```
 
 Xem thông tin của một dạng bài:

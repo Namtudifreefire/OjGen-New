@@ -174,6 +174,7 @@ public static class Problems
         new TreeProblem(),
         new MultiTestProblem(),
         new CustomProblem(),
+        new ChessMovesProblem(),
         // new MyProblem(),   // <- thêm module mới tại đây
     };
 
