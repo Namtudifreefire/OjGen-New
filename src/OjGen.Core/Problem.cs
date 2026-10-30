@@ -175,6 +175,10 @@ public static class Problems
         new MultiTestProblem(),
         new CustomProblem(),
         new ChessMovesProblem(),
+        new ChessPieceMovesProblem(),
+        new ChessKnightTargetsProblem(),
+        new ChessKnightReachabilityProblem(),
+        new ChessKnightShortestPathProblem(),
         // new MyProblem(),   // <- thêm module mới tại đây
     };
 

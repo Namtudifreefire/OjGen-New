@@ -48,6 +48,10 @@ public static class AlgorithmTopics
     public static IReadOnlyList<AlgorithmTopic> All { get; } = new AlgorithmTopic[]
     {
         new("Cờ vua", "Đếm nước đi của quân Mã", "chess_moves", "OjGen"),
+        new("Cờ vua", "Đếm nước đi của quân cờ", "chess_piece_moves", "OjGen"),
+        new("Cờ vua", "Liệt kê ô quân Mã có thể đi", "chess_knight_targets", "OjGen"),
+        new("Cờ vua", "Kiểm tra Mã đi một nước", "chess_knight_reachability", "OjGen"),
+        new("Cờ vua", "Đường đi ngắn nhất của quân Mã", "chess_knight_shortest", "OjGen"),
 
         // Lý thuyết đồ thị
         new("Lý thuyết Đồ thị", "DFS / BFS", "graph"),
