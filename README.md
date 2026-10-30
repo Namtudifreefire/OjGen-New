@@ -9,7 +9,7 @@ OJGEN 3.0 là công cụ tạo bộ test tự động cho lập trình thi đấ
 - **Giao diện GUI:** Thiết kế WPF với chủ đề Sáng, Tối và Tự động.
 - **Dòng lệnh CLI:** Hỗ trợ sử dụng bằng CMD, PowerShell và các script.
 - **14 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây và tùy chỉnh.
-- **Danh mục chủ đề VNOI và Codeforces:** chọn tag thuật toán để OjGen gợi ý khuôn input gần nhất; tag Codeforces có liên kết tới một bài mẫu.
+- **Danh mục chủ đề QBOJ, VNOI, Codeforces và LQDOJ:** chọn tag thuật toán để OjGen gợi ý khuôn input gần nhất; bài mẫu mở được từ giao diện.
 - **Tái lập dữ liệu:** Có thể tạo lại bộ test tương ứng bằng cùng seed và cấu hình.
 - **Tạo input/output:** Sinh file `.inp` và chạy lời giải chuẩn để tạo file `.out`.
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
@@ -48,7 +48,7 @@ OjGen chia bộ chọn thành **dạng chính → nhánh con** theo cấu trúc 
 
 Các tiêu đề QBOJ như `greedy`, `prefixsum`, `slidwin`, `two point`, `backtr` và `dynamic` là **chủ đề/thuật toán**. Chúng không chỉ ra duy nhất cấu trúc input, nên được dùng để gợi ý nhánh dữ liệu sau khi đọc đề, không thay cho dạng chính.
 
-GUI có bộ chọn tag thuật toán từ [VNOI](https://oj.vnoi.info/tags/) và [problemset Codeforces](https://codeforces.com/api/problemset.problems) (đồ thị, cấu trúc dữ liệu, xâu, quy hoạch động, toán, hình học, tham lam, ...). Chọn tag sẽ chuyển sang khuôn input phù hợp nhất hiện có; với tag Codeforces, giao diện cũng hiện liên kết tới một bài mẫu công khai. Đối chiếu định dạng input và giới hạn của đề mẫu trước khi sinh test: tag không xác định duy nhất input hay lời giải. Để tạo file output, hãy chọn lời giải chuẩn tương ứng trong ô **Lời giải chuẩn**.
+GUI có bộ chọn tag thuật toán từ [danh sách bài QBOJ](http://qboj.zapto.org/problems/), [VNOI](https://oj.vnoi.info/tags/), [problemset Codeforces](https://codeforces.com/api/problemset.problems) và [LQDOJ](https://lqdoj.edu.vn/problems/). Danh mục LQDOJ được lấy từ bộ lọc “Dạng bài” của trang danh sách: tại ngày 30-10-2026 có 163 nhãn, trong đó 156 nhãn gắn với ít nhất một bài; mỗi nhãn trong OjGen có một bài mẫu để mở trực tiếp. Các chủ đề bao gồm đồ thị, cấu trúc dữ liệu, xâu, quy hoạch động, toán, hình học, tham lam và các kỹ thuật khác. Chọn tag sẽ chuyển sang khuôn input gần nhất hiện có. Đối chiếu định dạng input và giới hạn của đề mẫu trước khi sinh test: tag không xác định duy nhất input hay lời giải. Để tạo file output, hãy chọn lời giải chuẩn tương ứng trong ô **Lời giải chuẩn**.
 
 | Dạng bài | Mô tả |
 |---|---|
@@ -70,7 +70,7 @@ GUI có bộ chọn tag thuật toán từ [VNOI](https://oj.vnoi.info/tags/) v�
 Với dạng `custom`, người dùng có thể thiết lập nhiều khoảng giá trị, chẳng hạn `1:10,50:100,-20:20`.
 Với `array`, có thể tạo hoán vị `1..n`; `matrix` hỗ trợ cả dạng hai mảng trên hai dòng.
 
-Trang QBOJ dùng các nhãn `backtr`, `basic`, `binary`, `chaotic`, `Chưa phân loại`, `codeendcode`, `doublearr`, `dynamic`, `Estinum`, `greedy`, `Hash`, `map`, `mark`, `markstr`, `math`, `normal`, `Numerals`, `numstr`, `prefixcount`, `prefixmaxmin`, `prefixsum`, `Recipe`, `rule`, `slidwin`, `Sort`, `special num`, `subarr`, `subarr1`, `two point` và `word` để mô tả chủ đề. Những nhãn này không quy định một khuôn input duy nhất; OjGen chọn mẫu theo cấu trúc dữ liệu để dùng được cho nhiều bài trong cùng nhóm.
+Trang QBOJ có các nhãn `backtr`, `basic`, `binary`, `chaotic`, `Chưa phân loại`, `codeendcode`, `doublearr`, `dynamic`, `Estinum`, `greedy`, `Hash`, `map`, `mark`, `markstr`, `math`, `normal`, `Numerals`, `numstr`, `prefixcount`, `prefixmaxmin`, `prefixsum`, `Recipe`, `rule`, `slidwin`, `Sort`, `special num`, `subarr`, `subarr1`, `two point` và `word`. OjGen đưa các nhãn có ý nghĩa chủ đề vào bộ chọn và loại `Chưa phân loại`; tại thời điểm đọc, `Hash` và `normal` không gắn với bài nào trong 1.069 dòng danh sách. Những nhãn này không quy định một khuôn input duy nhất; OjGen chọn mẫu theo cấu trúc dữ liệu để dùng được cho nhiều bài trong cùng nhóm.
 
 ## 4. Ví dụ sử dụng CLI
 

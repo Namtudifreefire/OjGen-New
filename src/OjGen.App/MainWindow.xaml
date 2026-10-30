@@ -81,9 +81,9 @@
                             </Grid.RowDefinitions>
 
                             <StackPanel Grid.Row="0">
-                                <TextBlock Text="Chủ đề thuật toán VNOI / Codeforces" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Chủ đề thuật toán QBOJ / VNOI / Codeforces / LQDOJ" Style="{StaticResource FieldLabel}" />
                                 <TextBlock x:Name="lblAlgorithmHint"
-                                           Text="Tùy chọn: chọn tag để OjGen gợi ý khuôn input; bài mẫu Codeforces mở được từ đây."
+                                           Text="Tùy chọn: chọn tag để OjGen gợi ý khuôn input; bài mẫu QBOJ / Codeforces / LQDOJ mở được từ đây."
                                            Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,0,3,4" />
                                 <ComboBox x:Name="cmbAlgorithmTopic"
                                           DisplayMemberPath="DisplayName"
