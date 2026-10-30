@@ -47,7 +47,7 @@ public static class AlgorithmTopics
 {
     public static IReadOnlyList<AlgorithmTopic> All { get; } = new AlgorithmTopic[]
     {
-        new("Cờ vua", "Liệt kê nước đi của quân cờ", "chess_moves", "OjGen"),
+        new("Cờ vua", "Đếm nước đi của quân Mã", "chess_moves", "OjGen"),
 
         // Lý thuyết đồ thị
         new("Lý thuyết Đồ thị", "DFS / BFS", "graph"),
