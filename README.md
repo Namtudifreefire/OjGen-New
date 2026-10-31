@@ -194,14 +194,15 @@ Xem toàn bộ tùy chọn bằng `ojgen --help`.
 
 ## 6. Kiểm thử và trạng thái xác minh
 
-Theo kết quả kiểm thử được ghi nhận trong dự án:
+Kết quả xác minh bản 3.1.0:
 
-- `ojgen --selftest`: 243 kiểm tra đạt.
-- `tests/run_tests.sh`: 65 kiểm tra đầu-cuối đạt.
-- `tests/check_wpf_static.py`: kiểm tra tĩnh WPF đạt.
-- So sánh 145 cấu hình với phiên bản C++: không có khác biệt về dữ liệu test.
+- `tests/run_tests.sh`: 65/65 kiểm tra đầu-cuối đạt.
+- `ojgen --selftest`: 290/290 kiểm tra đạt trên CLI đã publish.
+- `tests/check_wpf_static.py`: 17/17 tệp XAML hợp lệ; kiểm tra tên, sự kiện, tài nguyên và theme đạt.
+- CLI đã publish chạy smoke test tạo bộ test, kiểm validator, đối chiếu lời giải trên 100 trường hợp, kiểm tính tái lập và tạo/xác minh gói kiểm định thành công.
+- GUI đã publish mở được, xem trước và tạo thành công 3 file `.inp` với seed `2024`; manifest SHA-256 khớp cả 3 file, ZIP hợp lệ và có đủ test cùng metadata. Smoke test không dùng lời giải nên không tạo `.out`.
 
-**Lưu ý về GUI:** Kiểm tra tĩnh không thay thế việc chạy thử ứng dụng thực tế trên Windows. Trạng thái xác minh GUI cần được cập nhật sau khi kiểm tra trên môi trường Windows phù hợp.
+So sánh 145 cấu hình với phiên bản C++ là kết quả đã ghi nhận trước đây; chưa chạy lại trong đợt xác minh 3.1.0 này.
 
 ## 7. Ghi công và giấy phép
 
