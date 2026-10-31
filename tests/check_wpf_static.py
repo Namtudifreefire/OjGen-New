@@ -11,6 +11,9 @@ Chạy:  python3 tests/check_wpf_static.py
 import re, sys, glob, os
 import xml.etree.ElementTree as ET
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'OjGen.App')
 X = '{http://schemas.microsoft.com/winfx/2006/xaml}'
 errors = []

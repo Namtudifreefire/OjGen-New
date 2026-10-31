@@ -34,10 +34,12 @@ echo "== Tự kiểm tra nội bộ"
 expect_exit 0 "--selftest" "${BIN[@]}" --selftest
 
 echo "== Lệnh ví dụ"
+expect_exit 0 "--version" "${BIN[@]}" --version
 expect_exit 0 "--list" "${BIN[@]}" --list
 expect_exit 0 "--info graph" "${BIN[@]}" --info graph
 expect_exit 0 "--problem array --tests 20 --seed 2024" "${BIN[@]}" --problem array --tests 20 --seed 2024 --out "$T/array"
 [[ $(count "$T/array" .inp) -eq 20 && -f "$T/array.zip" ]] && ok "array: 20 file .inp + ZIP" || bad "array: thiếu file"
+[[ -f "$T/array/SHA256SUMS.txt" && $(wc -l < "$T/array/SHA256SUMS.txt") -eq 20 ]] && ok "array: manifest SHA-256 có đủ 20 input" || bad "array: manifest SHA-256 sai"
 expect_exit 0 "--problem custom --tests 100 --seed 2024" "${BIN[@]}" --problem custom --tests 100 --seed 2024 --out "$T/custom"
 [[ $(count "$T/custom" .inp) -eq 100 ]] && ok "custom: 100 file .inp" || bad "custom: số file sai"
 
@@ -107,11 +109,22 @@ echo "file cua toi" > "$T/keep/ghi_chu.txt"
 echo "== ZIP"
 if command -v unzip > /dev/null; then
     unzip -tq "$T/sol_custom.zip" > /dev/null && ok "unzip -t: ZIP hợp lệ" || bad "unzip -t báo lỗi"
-    [[ $(unzip -Z1 "$T/sol_custom.zip" | wc -l) -eq 30 ]] && ok "ZIP có đúng 30 file" || bad "ZIP sai số file"
+    [[ $(unzip -Z1 "$T/sol_custom.zip" | wc -l) -eq 32 ]] && ok "ZIP có 30 file test cùng 2 file metadata" || bad "ZIP sai số file"
+    unzip -Z1 "$T/sol_custom.zip" | grep -qx "SHA256SUMS.txt" && unzip -Z1 "$T/sol_custom.zip" | grep -qx "ojgen_info.txt" && ok "ZIP kèm manifest và thông tin seed" || bad "ZIP thiếu metadata"
 else
     echo "  (bỏ qua: không có lệnh unzip)"
 fi
 expect_exit 0 "--zip-dir" "${BIN[@]}" --zip-dir "$T/re"
+
+echo "== Kiểm định phát hành CLI"
+expect_exit 0 "--audit chạy validator và so sánh lời giải" "${BIN[@]}" --problem array --tests 5 --seed 2024 --solution examples/solutions/array_sol.cpp --validator "$SOL/array_validator.py" --compare-solution "$SOL/array_alt_sol.py" --audit --no-zip --out "$T/audit"
+[[ -f "$T/audit/AUDIT_REPORT.txt" && -f "$T/audit/PACKAGE.txt" && -f "$T/audit/PACKAGE_SHA256SUMS.txt" ]] && ok "audit: lưu báo cáo và manifest gói" || bad "audit: thiếu báo cáo hoặc manifest"
+grep -q "Validator hai chiều" "$T/audit/AUDIT_REPORT.txt" && grep -q "Đối chiếu lời giải" "$T/audit/AUDIT_REPORT.txt" && ok "audit: validator hai chiều và đối chiếu lời giải đạt" || bad "audit: thiếu kết quả kiểm tra"
+expect_exit 0 "--audit-dir tạo ZIP sau khi xác nhận cảnh báo" "${BIN[@]}" --audit-dir "$T/audit" --problem array --tests 5 --seed 2024 --solution examples/solutions/array_sol.cpp --allow-audit-warnings
+[[ -f "$T/audit.zip" ]] && unzip -Z1 "$T/audit.zip" | grep -qx "PACKAGE_SHA256SUMS.txt" && ok "audit ZIP: có package checksum" || bad "audit ZIP: thiếu gói/manifest"
+cp -R "$T/audit" "$T/audit_tampered"
+printf '\n999\n' >> "$T/audit_tampered/test01.inp"
+expect_exit 2 "--zip-dir từ chối test đã bị sửa" "${BIN[@]}" --zip-dir "$T/audit_tampered"
 
 if [[ -n "${CPP_REF:-}" && -x "$CPP_REF" ]]; then
     echo "== So khớp từng byte với bản C++ gốc ($CPP_REF)"
