@@ -26,6 +26,10 @@ public sealed record AlgorithmTopic(
                 return $"http://qboj.zapto.org/problem/{problemCode}";
             if (Source == "LQDOJ")
                 return $"https://lqdoj.edu.vn/problem/{problemCode.ToLowerInvariant()}";
+            if (Source == "LTOJ")
+                return $"https://ltoj.edu.vn/problem/{problemCode.ToLowerInvariant()}";
+            if (Source == "DMOJ")
+                return $"https://dmoj.ca/problem/{problemCode.ToLowerInvariant()}";
             if (Source != "Codeforces") return null;
 
             var indexStart = 0;
@@ -40,7 +44,7 @@ public sealed record AlgorithmTopic(
 }
 
 /// <summary>
-/// VNOI, Codeforces, QBOJ, and LQDOJ tags mapped to reusable OjGen input formats.
+/// VNOI, Codeforces, QBOJ, LQDOJ, LTOJ, and DMOJ tags mapped to reusable OjGen input formats.
 /// Tags are based on public problem directories; they are not problem solutions.
 /// </summary>
 public static class AlgorithmTopics
@@ -276,7 +280,62 @@ public static class AlgorithmTopics
         new("", "two pointers", "array", "Codeforces", "2271D — Target Infection"),
         new("", "communication", "custom", "Codeforces", "2255C — Even If the World Turns"),
 
-        // Active problem-type tags from the LQDOJ problem directory.
+        // Active "Dạng bài" labels reviewed across all 501 problems on LTOJ (11 pages), 2026-10-31.
+        // "Thiếu đề bài" is a missing-statement marker, not an algorithm topic. Generator choices are input-shape suggestions.
+        LtojTopic("Lập trình cơ bản", "Câu lệnh điều kiện", "single_n", "LUOM24T10B5"),
+        LtojTopic("Kĩ thuật bit", "Bitmask", "array", "LUOM24T10B4"),
+        LtojTopic("Duyệt & mảng", "Duyệt", "array", "DUYETCAPSO1"),
+        LtojTopic("Toán học", "Toán học cơ bản", "single_n", "TS10TIENGIANG2024TIMX"),
+        LtojTopic("Tìm kiếm", "Tìm kiếm nhị phân", "array", "LAMDONGCHUYEN2026CAU4"),
+        LtojTopic("Toán học", "Số học", "single_n", "LAMDONGCHUYEN2026CAU3"),
+        LtojTopic("Dãy & tìm kiếm", "Sắp xếp", "array", "LAMDONGCHUYEN2026CAU3"),
+        LtojTopic("Xử lý xâu", "Chuỗi ký tự", "string", "VINHLONGCHUYEN2026CAU3"),
+        LtojTopic("Hình học", "Hình học", "pairs", "VINHLONGCHUYEN2026CAU2"),
+        LtojTopic("Kĩ năng khác", "Ad-hoc", "custom", "ABCDEFG32"),
+        LtojTopic("Lập trình cơ bản", "Nhập môn", "single_n", "22THTSTRA1"),
+        LtojTopic("Cấu trúc dữ liệu", "Cây phân đoạn", "queries", "FENWICK3"),
+        LtojTopic("Dãy & truy vấn", "Dãy tiền tố", "queries", "DAYCHIAHET2"),
+        LtojTopic("Dãy & tìm kiếm", "Đếm", "array", "CAPSO1"),
+        LtojTopic("Cấu trúc dữ liệu", "Cấu trúc dữ liệu / STL", "string", "DAYNGOAC1"),
+        LtojTopic("Duyệt & mảng", "Đệ quy", "array", "DIRECTIONS"),
+        LtojTopic("Toán học", "Số nguyên lớn", "string", "SUMPHUOCTHIEN"),
+        LtojTopic("Toán học", "Lũy thừa ma trận", "matrix", "GAMEINTHEMATRIX"),
+        LtojTopic("Dãy & truy vấn", "Dãy con liên tiếp", "array", "RECRUITINGADANCETEAM"),
+        LtojTopic("Lý thuyết đồ thị", "DSU (Hợp nhất tập hợp)", "graph", "328478324"),
+        LtojTopic("Quy hoạch động", "Quy hoạch động", "grid", "CSES1638"),
+        LtojTopic("Dãy & tìm kiếm", "Hai con trỏ", "array", "FC141DIVIDE"),
+        LtojTopic("Lý thuyết đồ thị", "Đường đi ngắn nhất", "graph", "CSES1202"),
+        LtojTopic("Lý thuyết đồ thị", "Cây khung nhỏ nhất (MST)", "graph", "CSES1675"),
+        LtojTopic("Lý thuyết đồ thị", "Duyệt đồ thị (DFS/BFS)", "graph", "CSES1666"),
+        LtojTopic("Duyệt & mảng", "Quay lui", "array", "HOANVINGHICHTHE"),
+        LtojTopic("Hình học", "Bao lồi (Convex Hull)", "pairs", "HSG112324TREE"),
+        LtojTopic("Cấu trúc dữ liệu", "Xử lý offline", "queries", "NKTSODACBIET"),
+        LtojTopic("Lý thuyết trò chơi", "Lý thuyết trò chơi", "single_n", "BANCOKYLA"),
+
+        // Active DMOJ problem types reviewed across all 5,275 directory entries on 106 pages, 2026-10-31.
+        // "Uncategorized" is excluded; each topic opens a problem carrying the corresponding type.
+        DmojTopic("Toán học", "Toán đơn giản", "single_n", "16bitswonly"),
+        DmojTopic("Cài đặt", "Cài đặt", "custom", "2048"),
+        DmojTopic("Kĩ năng khác", "Ad Hoc", "custom", "2dperm"),
+        DmojTopic("Cấu trúc dữ liệu", "Cấu trúc dữ liệu", "queries", "2drmq"),
+        DmojTopic("Hình học", "Hình học", "pairs", "apio18p2"),
+        DmojTopic("Lý thuyết trò chơi", "Lý thuyết trò chơi", "array", "bts26p6"),
+        DmojTopic("Tham lam", "Giải thuật tham lam", "array", "aac2p2"),
+        DmojTopic("Kĩ năng khác", "Constructive", "array", "aaaa1p3"),
+        DmojTopic("Quy hoạch động", "Quy hoạch động", "array", "aaaa1p4"),
+        DmojTopic("Toán học", "Toán trung cấp", "single_n", "aaaa1p4"),
+        DmojTopic("Xử lý xâu", "Các thuật toán string", "string", "aaaa1p5"),
+        DmojTopic("Lý thuyết đồ thị", "Lý thuyết đồ thị", "graph", "aaaa1p6"),
+        DmojTopic("Thuật toán tương tác", "Interactive", "custom", "aac5p2"),
+        DmojTopic("Duyệt", "Brute Force", "pairs", "ac19p4"),
+        DmojTopic("Toán học", "Toán nâng cao", "single_n", "acc3p2"),
+        DmojTopic("Duyệt", "Đệ quy", "array", "acc9p4"),
+        DmojTopic("Kĩ năng khác", "Mô phỏng", "custom", "acmtryouts1c"),
+        DmojTopic("Xử lý xâu", "Biểu thức chính quy (Regex)", "string", "acmtryouts1f"),
+        DmojTopic("Chia để trị", "Chia để trị", "array", "asumproblem"),
+        DmojTopic("Kĩ năng khác", "Capture the Flag", "custom", "dctf1p10"),
+
+        // Active problem-type tags checked across all 160 LQDOJ directory pages on 2026-10-31.
         // Each entry links to one problem carrying that tag; input shapes are recommendations.
         LqdojTopic("2-sat", "CSES3312"),
         LqdojTopic("adhoc", "HDT"),
@@ -438,6 +497,12 @@ public static class AlgorithmTopics
 
     private static AlgorithmTopic LqdojTopic(string tag, string exampleProblem) =>
         new(LqdojCategory(tag), tag, LqdojRecommendedProblemId(tag), "LQDOJ", exampleProblem);
+
+    private static AlgorithmTopic LtojTopic(string category, string tag, string problemId, string exampleProblem) =>
+        new(category, tag, problemId, "LTOJ", exampleProblem);
+
+    private static AlgorithmTopic DmojTopic(string category, string tag, string problemId, string exampleProblem) =>
+        new(category, tag, problemId, "DMOJ", exampleProblem);
 
     private static string LqdojCategory(string tag)
     {

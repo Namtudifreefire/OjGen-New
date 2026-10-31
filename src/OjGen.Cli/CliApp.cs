@@ -39,13 +39,15 @@ internal static class CliApp
         s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini trong thư mục hiện tại)\n");
         s.Append("  --<tham số> GIÁ_TRỊ  Tham số riêng của dạng bài, xem bằng --info <dạng>\n\n");
         s.Append("CHỦ ĐỀ THUẬT TOÁN\n");
-        s.Append("  --topics liệt kê chủ đề VNOI, QBOJ, Codeforces và LQDOJ; dùng --topic-source để lọc nguồn.\n");
+        s.Append("  --topics liệt kê chủ đề VNOI, QBOJ, Codeforces, LQDOJ, LTOJ và DMOJ; dùng --topic-source để lọc nguồn.\n");
         s.Append("  --topic chỉ hiển thị chi tiết nếu đứng một mình; khi kèm tùy chọn sinh test, OjGen dùng khuôn gợi ý\n");
         s.Append("  làm --problem mặc định. Chủ đề là gợi ý cấu trúc input, không thay cho việc đọc đề và giới hạn.\n\n");
         s.Append("VÍ DỤ\n");
         s.Append("  ojgen --list\n");
         s.Append("  ojgen --topics --topic-source LQDOJ\n");
+        s.Append("  ojgen --topics --topic-source DMOJ\n");
         s.Append("  ojgen --topic \"LQDOJ:greedy (tham lam)\"\n");
+        s.Append("  ojgen --topic \"DMOJ:Quy hoạch động\"\n");
         s.Append("  ojgen --topic \"LQDOJ:greedy (tham lam)\" --tests 20 --seed 2024\n");
         s.Append("  ojgen --problem array --tests 20 --seed 2024\n");
         s.Append("  ojgen --problem custom --tests 100 --seed 2024\n");

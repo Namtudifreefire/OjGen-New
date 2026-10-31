@@ -9,7 +9,7 @@ OJGEN 3.0 là công cụ tạo bộ test tự động cho lập trình thi đấ
 - **Giao diện GUI:** Thiết kế WPF với chủ đề Sáng, Tối và Tự động.
 - **Dòng lệnh CLI:** Hỗ trợ sử dụng bằng CMD, PowerShell và các script.
 - **19 cấu trúc input:** số nguyên, hai số, mảng/hoán vị, nhiều bộ test, hai mảng/ma trận, xâu, lưới ký tự, cặp/đoạn, truy vấn, đồ thị, cây, tùy chỉnh và các khuôn cờ vua.
-- **Danh mục chủ đề QBOJ, VNOI, Codeforces và LQDOJ:** chọn tag thuật toán trong GUI hoặc CLI để OjGen gợi ý khuôn input gần nhất; xem bài mẫu từ giao diện hoặc dòng lệnh.
+- **Danh mục chủ đề QBOJ, VNOI, Codeforces, LQDOJ, LTOJ và DMOJ:** chọn tag thuật toán trong GUI hoặc CLI để OjGen gợi ý khuôn input gần nhất; xem bài mẫu từ giao diện hoặc dòng lệnh.
 - **Tái lập dữ liệu:** Có thể tạo lại bộ test tương ứng bằng cùng seed và cấu hình.
 - **Tạo input/output:** Sinh file `.inp` và chạy lời giải chuẩn để tạo file `.out`.
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
@@ -48,7 +48,7 @@ OjGen chia bộ chọn thành **dạng chính → nhánh con** theo cấu trúc 
 
 Các tiêu đề QBOJ như `greedy`, `prefixsum`, `slidwin`, `two point`, `backtr` và `dynamic` là **chủ đề/thuật toán**. Chúng không chỉ ra duy nhất cấu trúc input, nên được dùng để gợi ý nhánh dữ liệu sau khi đọc đề, không thay cho dạng chính.
 
-GUI có bộ chọn tag thuật toán từ [danh sách bài QBOJ](http://qboj.zapto.org/problems/), [VNOI](https://oj.vnoi.info/tags/), [problemset Codeforces](https://codeforces.com/api/problemset.problems) và [LQDOJ](https://lqdoj.edu.vn/problems/). Danh mục LQDOJ được lấy từ bộ lọc “Dạng bài” của trang danh sách: tại ngày 30-10-2026 có 163 nhãn, trong đó 156 nhãn gắn với ít nhất một bài; mỗi nhãn trong OjGen có một bài mẫu để mở trực tiếp. Các chủ đề bao gồm đồ thị, cấu trúc dữ liệu, xâu, quy hoạch động, toán, hình học, tham lam và các kỹ thuật khác. Chọn tag sẽ chuyển sang khuôn input gần nhất hiện có. Đối chiếu định dạng input và giới hạn của đề mẫu trước khi sinh test: tag không xác định duy nhất input hay lời giải. Để tạo file output, hãy chọn lời giải chuẩn tương ứng trong ô **Lời giải chuẩn**.
+GUI và CLI dùng chung bộ chọn tag thuật toán từ [danh sách bài QBOJ](http://qboj.zapto.org/problems/), [VNOI](https://oj.vnoi.info/tags/), [problemset Codeforces](https://codeforces.com/api/problemset.problems), [LQDOJ](https://lqdoj.edu.vn/problems/), [LTOJ](https://ltoj.edu.vn/problems/) và [DMOJ](https://dmoj.ca/problems/). Đối chiếu ngày 31-10-2026 trên toàn bộ 160 trang danh sách LQDOJ (bật “Hiển thị dạng bài”) cho thấy 163 nhãn trong bộ lọc, trong đó 156 nhãn gắn với ít nhất một bài; OjGen có đủ 156 nhãn đang dùng và một bài mẫu để mở trực tiếp cho mỗi nhãn. Rà soát đủ 501 bài trên 11 trang danh sách LTOJ (bật “Hiển thị dạng bài”) cho thấy 29 nhãn đang được dùng; catalog có đủ 29 nhãn và một bài mẫu thật để mở cho từng nhãn. Rà soát đủ 5.275 bài trên 106 trang DMOJ (bật “Hiện kiểu bài tập”) cho thấy 20 nhãn được gắn với bài; catalog có đủ 20 nhãn và một bài mẫu thật cho từng nhãn. “Uncategorized” không phải chủ đề nên không được đưa vào catalog. Mỗi tag chỉ gợi ý khuôn input gần nhất hiện có, không xác định định dạng hay lời giải của đề mẫu; hãy đối chiếu đề và giới hạn trước khi sinh test. Để tạo file output, hãy chọn lời giải chuẩn tương ứng trong ô **Lời giải chuẩn**.
 
 | Dạng bài | Mô tả |
 |---|---|
@@ -87,6 +87,8 @@ Liệt kê các dạng bài và chủ đề thuật toán:
 ojgen --list
 ojgen --topics
 ojgen --topics --topic-source LQDOJ
+ojgen --topics --topic-source LTOJ
+ojgen --topics --topic-source DMOJ
 ```
 
 Xem một chủ đề, bài mẫu và khuôn input được gợi ý:
@@ -99,6 +101,9 @@ Sinh test từ khuôn được gợi ý bởi chủ đề (có thể chỉ rõ `
 
 ```bash
 ojgen --topic "LQDOJ:greedy (tham lam)" --tests 20 --seed 2024
+ojgen --topic "LTOJ:Hai con trỏ"
+ojgen --topic "DMOJ:Quy hoạch động"
+ojgen --topic "LTOJ:Quy hoạch động" --tests 20 --seed 2024
 ```
 
 Xem thông tin của một dạng bài:
