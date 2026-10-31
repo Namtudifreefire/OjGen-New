@@ -1,11 +1,13 @@
 // FileManager.cs - Thao tác file/thư mục an toàn (UTF-8, không ghi đè ngoài ý muốn).
 using System.Text;
+using System.Security.Cryptography;
 
 namespace OjGen.Core;
 
 public static class FileManager
 {
     public const string InfoFile = "ojgen_info.txt";
+    public const string ChecksumFile = "SHA256SUMS.txt";
 
     /// <summary>Ghi nhị phân (giữ nguyên \n, không đổi thành \r\n trên Windows).</summary>
     public static bool WriteFile(string path, string data, out string? err) =>
@@ -105,7 +107,81 @@ public static class FileManager
     public static int CountTestFiles(string dir) =>
         ListFilesWithExt(dir, ".inp").Count + ListFilesWithExt(dir, ".out").Count;
 
-    /// <summary>Xóa CHỈ các file .inp, .out và file thông tin ojgen trong thư mục (không đệ quy). -1 nếu lỗi.</summary>
+    /// <summary>Ghi SHA-256 cho toàn bộ file .inp/.out trong thư mục.</summary>
+    public static bool WriteTestChecksumManifest(string dir, out int fileCount, out string? err)
+    {
+        fileCount = 0;
+        err = null;
+        try
+        {
+            var files = ListFilesWithExt(dir, ".inp");
+            files.AddRange(ListFilesWithExt(dir, ".out"));
+            files.Sort((a, b) => NaturalLess(Path.GetFileName(a), Path.GetFileName(b)) ? -1 :
+                                  NaturalLess(Path.GetFileName(b), Path.GetFileName(a)) ? 1 : 0);
+            var lines = new StringBuilder();
+            foreach (string file in files)
+            {
+                using var stream = File.OpenRead(file);
+                string hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+                lines.Append(hash).Append("  ").Append(Path.GetFileName(file)).Append('\n');
+            }
+            File.WriteAllText(Path.Combine(dir, ChecksumFile), lines.ToString(), new UTF8Encoding(false));
+            fileCount = files.Count;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            err = "Không ghi được manifest SHA-256: " + ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>Kiểm tra manifest có đủ mọi file .inp/.out và nội dung chưa bị thay đổi.</summary>
+    public static string? VerifyTestChecksumManifest(string dir, out int verifiedCount)
+    {
+        verifiedCount = 0;
+        string manifestPath = Path.Combine(dir, ChecksumFile);
+        if (!File.Exists(manifestPath)) return "Chưa có manifest SHA-256.";
+        try
+        {
+            var expected = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string raw in File.ReadAllLines(manifestPath, Encoding.UTF8))
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                int separator = raw.IndexOf("  ", StringComparison.Ordinal);
+                if (separator != 64 || raw.Length <= separator + 2)
+                    return "Manifest SHA-256 có dòng sai định dạng.";
+                string hash = raw[..separator];
+                string name = raw[(separator + 2)..];
+                if (hash.Any(c => !Uri.IsHexDigit(c)) || Path.GetFileName(name) != name ||
+                    !(string.Equals(Path.GetExtension(name), ".inp", StringComparison.OrdinalIgnoreCase) ||
+                      string.Equals(Path.GetExtension(name), ".out", StringComparison.OrdinalIgnoreCase)))
+                    return "Manifest SHA-256 có tên file hoặc mã băm không hợp lệ.";
+                if (!expected.TryAdd(name, hash)) return "Manifest SHA-256 có tên file bị lặp.";
+            }
+
+            var actualFiles = ListFilesWithExt(dir, ".inp");
+            actualFiles.AddRange(ListFilesWithExt(dir, ".out"));
+            if (actualFiles.Count != expected.Count) return $"Manifest ghi {expected.Count} file nhưng thư mục có {actualFiles.Count} file .inp/.out.";
+            foreach (string file in actualFiles)
+            {
+                string name = Path.GetFileName(file);
+                if (!expected.TryGetValue(name, out string? expectedHash)) return $"Manifest thiếu file {name}.";
+                using var stream = File.OpenRead(file);
+                string actualHash = Convert.ToHexString(SHA256.HashData(stream));
+                if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                    return $"SHA-256 không khớp: {name} đã thay đổi sau khi sinh.";
+                verifiedCount++;
+            }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return "Không đọc/kiểm tra được manifest SHA-256: " + ex.Message;
+        }
+    }
+
+    /// <summary>Xóa CHỈ các file .inp, .out, thông tin ojgen và manifest SHA-256 (không đệ quy). -1 nếu lỗi.</summary>
     public static long ClearTestFiles(string dir, out string? err)
     {
         err = null;
@@ -113,6 +189,8 @@ public static class FileManager
         files.AddRange(ListFilesWithExt(dir, ".out"));
         string info = Path.Combine(dir, InfoFile);
         if (File.Exists(info)) files.Add(info);
+        string checksums = Path.Combine(dir, ChecksumFile);
+        if (File.Exists(checksums)) files.Add(checksums);
         long removed = 0;
         foreach (var f in files)
         {

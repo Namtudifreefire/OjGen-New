@@ -12,10 +12,10 @@ public sealed class ConfigModel
     /// <summary>Cấu hình hiện tại (gồm cả tham số đang ẩn).</summary>
     public Config Config { get; }
 
-    public ConfigModel(Problem problem)
+    public ConfigModel(Problem problem, Config? initialConfig = null)
     {
         Problem = problem;
-        Config = problem.DefaultConfig();
+        Config = initialConfig?.Clone() ?? problem.DefaultConfig();
     }
 
     public ParamSpec? Spec(string key) => Problem.Params.FirstOrDefault(p => p.Key == key);
@@ -111,9 +111,14 @@ public static class JobPlanner
         public bool ZipIncomplete { get; set; }
         public bool Overwrite { get; set; }
         public bool Rebuild { get; set; }
+        public string ProblemName { get; set; } = "";
+        public string ProblemCode { get; set; } = "";
+        public IReadOnlyList<TestGroupSpec> Groups { get; set; } = Array.Empty<TestGroupSpec>();
+        public IReadOnlyList<ManualTestSpec> ManualTests { get; set; } = Array.Empty<ManualTestSpec>();
     }
 
-    public static string DefaultOutDir(Problem p, Settings st) => Path.Combine(st.OutputRoot, p.Id);
+    public static string DefaultOutDir(Problem p, Settings st, string problemCode = "") =>
+        Path.Combine(st.OutputRoot, problemCode.Trim().Length == 0 ? p.Id : problemCode.Trim());
 
     /// <summary>Trả về null nếu thành công (spec, policy được gán), ngược lại là thông báo lỗi.</summary>
     public static string? Build(ConfigModel model, Options o, Settings st, out JobSpec? spec, out ExistingPolicy policy)
@@ -129,18 +134,62 @@ public static class JobPlanner
             if (!Util.ParseULL(o.SeedText, out ulong sv)) return "Seed phải là số nguyên không âm (để trống = chọn ngẫu nhiên).";
             seed = sv;
         }
-        string outDir = o.OutDirText.Trim().Length > 0 ? o.OutDirText.Trim() : DefaultOutDir(model.Problem, st);
+        string problemCode = o.ProblemCode.Trim();
+        if (problemCode.Length > 64 || problemCode.Any(c => !(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-' or '_')))
+            return "Mã bài chỉ được gồm chữ không dấu, số, dấu gạch ngang hoặc gạch dưới (tối đa 64 ký tự).";
+        int generatedCount = (int)tests;
+        if (o.Groups.Count > 0)
+        {
+            if (o.Groups.Count > Generator.MaxGroups)
+                return $"Kế hoạch không được vượt quá {Generator.MaxGroups} nhóm.";
+            long groupedTests = 0;
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in o.Groups)
+            {
+                if (group.Name.Trim().Length == 0 || !names.Add(group.Name.Trim()))
+                    return "Tên các nhóm phải có nội dung và không được trùng nhau.";
+                if (group.TestCount < 1 || group.TestCount > Generator.MaxTests)
+                    return $"Số test của nhóm '{group.Name}' phải trong [1, {Generator.MaxTests}].";
+                if (Generator.ValidateFullConfig(model.Problem, group.Cfg) is { } groupError)
+                    return $"Nhóm '{group.Name}': {groupError}";
+                groupedTests += group.TestCount;
+                if (groupedTests > Generator.MaxTests)
+                    return $"Tổng số test của các nhóm không được vượt quá {Generator.MaxTests}.";
+            }
+            generatedCount = (int)groupedTests;
+        }
+        if (o.ManualTests.Count > Generator.MaxTests)
+            return $"Không được vượt quá {Generator.MaxTests} test nhập tay.";
+        var manualNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var manual in o.ManualTests)
+        {
+            string name = manual.Name.Trim();
+            if (name.Length == 0 || !manualNames.Add(name)) return "Tên các test nhập tay phải có nội dung và không được trùng nhau.";
+            if (Generator.ValidateFullConfig(model.Problem, manual.Cfg) is { } manualConfigError)
+                return $"Test '{name}': cấu hình không hợp lệ: {manualConfigError}";
+            if (model.Problem.ValidateInput(manual.Input, manual.Cfg) is { } inputError)
+                return $"Test '{name}' không hợp lệ: {inputError}";
+        }
+        long totalTests = (long)generatedCount + o.ManualTests.Count;
+        if (totalTests < 1 || totalTests > Generator.MaxTests)
+            return $"Tổng số test (nhập tay + sinh tự động) phải trong [1, {Generator.MaxTests}].";
+        string outDir = o.OutDirText.Trim().Length > 0 ? o.OutDirText.Trim() : DefaultOutDir(model.Problem, st, o.ProblemCode);
         spec = new JobSpec
         {
             Problem = model.Problem,
             Cfg = model.Effective(),
-            TestCount = (int)tests,
+            TestCount = (int)totalTests,
+            GeneratedTestCount = generatedCount,
             Seed = seed,
             SolutionPath = o.SolutionPath.Trim().Trim('"'),
             OutDir = outDir,
             Zip = o.Zip ? ZipMode.Yes : ZipMode.No,
             ZipIncomplete = o.ZipIncomplete,
             ForceRebuild = o.Rebuild,
+            ProblemName = o.ProblemName.Trim(),
+            ProblemCode = problemCode,
+            Groups = o.Groups.Select(g => g.Clone()).ToList(),
+            ManualTests = o.ManualTests.Select(test => test.Clone()).ToList(),
         };
         return null;
     }

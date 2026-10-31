@@ -14,6 +14,17 @@ OJGEN 3.0 là công cụ tạo bộ test tự động cho lập trình thi đấ
 - **Tạo input/output:** Sinh file `.inp` và chạy lời giải chuẩn để tạo file `.out`.
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
 - **Tùy chỉnh cấu hình:** Số lượng test, seed, timeout, giới hạn output, bộ nhớ và các tham số riêng.
+- **Wizard thiết lập bài:** Đặt tên/mã bài, chọn khuôn input, chỉnh giới hạn, gắn lời giải chuẩn và lưu/mở hồ sơ `.ojproblem.json` để dùng lại.
+- **Kế hoạch nhóm test:** Chia bộ test thành tối đa 100 nhóm; mỗi nhóm có số lượng, seed riêng tùy chọn và cấu hình tham số riêng. Seed nhóm để trống được tạo ổn định từ seed chính.
+- **Rà soát trước khi tạo:** Xem lại đường dẫn, số lượng và input mẫu đã qua xác thực cho từng nhóm trước khi ghi file; OjGen tiếp tục xác thực mọi input và kiểm tra ZIP sau khi tạo.
+- **Test mẫu / test nhập tay:** Mở hoặc dán input, chọn cấu hình để xác thực, đánh dấu sample; lời giải chuẩn tạo `.out` cùng các test sinh tự động.
+- **Kiểm thử đối chiếu:** Chạy lời giải chuẩn và lời giải cần thử trên cùng các test nhỏ, so sánh output và lưu các input gây khác biệt để tái hiện.
+- **Báo cáo độ phủ:** Sau khi sinh, xem các cấu hình và kiểu nhóm đã dùng, kích thước input cùng gợi ý trường hợp còn thiếu. Đây là phân tích heuristic, không thay thế rà soát theo đặc tả bài.
+- **Soạn đề và xem trước:** Viết mô tả, định dạng input/output, ràng buộc và ví dụ; xem trước dạng HTML, lưu bản nháp Markdown/JSON và kiểm tra nhất quán với cấu hình bài, test mẫu.
+- **Đóng gói bài:** Xuất statement Markdown/HTML, hồ sơ `.ojproblem.json`, test, ví dụ và tùy chọn lời giải chuẩn, validator, checker thành thư mục hoặc ZIP.
+- **Kiểm định trước phát hành:** Trước khi đóng gói, OjGen rà cấu trúc đề, định dạng input, đủ output, test trùng, độ phủ nhỏ/biên/stress, SHA-256 và khả năng tái lập input với cùng seed; lỗi chặn đóng gói, cảnh báo cần được xác nhận. Nếu chọn validator, OjGen chạy trên mọi input hợp lệ và một số input sai; có thể thêm lời giải độc lập để đối chiếu trên 100 test nhỏ. Checker được đóng gói nhưng không tự chạy vì mỗi judge có giao diện đối số riêng.
+- **Theo dõi tính toàn vẹn:** Mỗi bộ test có `SHA256SUMS.txt`; gói phát hành có `PACKAGE_SHA256SUMS.txt` cùng `AUDIT_REPORT.txt`. `PACKAGE.txt` ghi seed, phiên bản/runtime/OS và SHA-256 của các lời giải, validator, checker đã chọn.
+- **Khung validator/checker:** Tạo file khởi đầu C++ hoặc Python cho validator input và checker output kèm README các phần cần hoàn thiện.
 - **Tạo lại output:** Chạy lại lời giải trên bộ test có sẵn.
 - **Nhật ký và tiến độ:** Theo dõi quá trình chạy, xem thông báo và hủy tác vụ trong GUI.
 - **Hỗ trợ nhiều ngôn ngữ:** Chạy lời giải C++, Python và chương trình `.exe`.
@@ -141,6 +152,28 @@ ojgen --regen-out <thư_mục_test> --solution sol.cpp
 ```bash
 ojgen --zip-dir <thư_mục_test>
 ```
+
+Kiểm định trước khi phát hành (lệnh chỉ tạo ZIP sau khi kiểm tra đạt):
+
+```bash
+ojgen --problem array --tests 30 --seed 2024 --solution sol.cpp --audit --no-zip
+```
+
+Lệnh trên chỉ kiểm định và ghi báo cáo để bạn rà lại. Sau đó đóng gói thư mục đã kiểm tra:
+
+```bash
+ojgen --audit-dir output/array --problem array --tests 30 --seed 2024 --solution sol.cpp --allow-audit-warnings
+```
+
+Kiểm định thư mục đã có. Có thể nạp tham số từ hồ sơ `.ojproblem.json`; `--tests` đặt số lượng input mong đợi và `--seed` bật so sánh tái lập:
+
+```bash
+ojgen --audit-dir output/array --profile problem.ojproblem.json --tests 30 --seed 2024 --solution sol.cpp
+```
+
+Thêm các bước tùy chọn: `--validator validator.py` chạy validator trên mọi input và một số biến thể sai; `--compare-solution brute.cpp` so với `--solution` trên 100 test nhỏ; `--checker checker.cpp` xác nhận file checker tồn tại nhưng không chạy vì giao diện tùy judge; `--statement draft.ojdraft.json` kiểm tra nội dung bản nháp được lưu từ giao diện. Cảnh báo chặn ZIP theo mặc định; sau khi đọc `AUDIT_REPORT.txt`, dùng `--allow-audit-warnings` để xác nhận. Lỗi kiểm định vẫn luôn chặn ZIP.
+
+Gói kiểm định gồm `AUDIT_REPORT.txt`, `PACKAGE.txt`, `PACKAGE_SHA256SUMS.txt` và `SHA256SUMS.txt`. Khi chạy `--zip-dir`, OjGen kiểm tra các manifest có sẵn và không đóng gói nếu nội dung đã đổi.
 
 Chạy tự kiểm tra:
 

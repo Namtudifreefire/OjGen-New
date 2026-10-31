@@ -1,5 +1,6 @@
 // Job.cs - Điều phối quy trình: sinh input -> chạy lời giải -> ghi thông tin -> ZIP.
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace OjGen.Core;
@@ -13,6 +14,7 @@ public sealed class JobSpec
     public Problem Problem { get; set; } = null!;
     public Config Cfg { get; set; } = new();
     public int TestCount { get; set; } = 10;
+    public int GeneratedTestCount { get; set; }
     public ulong? Seed { get; set; }
     /// <summary>Rỗng = không tạo output.</summary>
     public string SolutionPath { get; set; } = "";
@@ -22,6 +24,10 @@ public sealed class JobSpec
     /// <summary>Vẫn nén khi bộ test chưa hoàn chỉnh.</summary>
     public bool ZipIncomplete { get; set; }
     public bool ForceRebuild { get; set; }
+    public string ProblemName { get; set; } = "";
+    public string ProblemCode { get; set; } = "";
+    public List<TestGroupSpec> Groups { get; set; } = new();
+    public List<ManualTestSpec> ManualTests { get; set; } = new();
 }
 
 public sealed class JobResult
@@ -35,12 +41,27 @@ public sealed class JobResult
     public string? ZipPath { get; set; }
     public int InputCount { get; set; }
     public OutputReport? Report { get; set; }
+    public CoverageReport? Coverage { get; set; }
     public string? Error { get; set; }
 }
 
 public static class Job
 {
     private static string NowStr() => DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    private static string NormalizeOutputTokens(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        bool pendingSpace = false;
+        foreach (char c in text)
+        {
+            if (char.IsWhiteSpace(c)) { pendingSpace = sb.Length > 0; continue; }
+            if (pendingSpace) sb.Append(' ');
+            sb.Append(c);
+            pendingSpace = false;
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Ghi nhớ lời giải gần nhất vào file cấu hình (không lưu các tùy chọn CLI tạm thời).</summary>
     private static void RememberSolution(Settings st, string path, string problemId)
@@ -97,6 +118,44 @@ public static class Job
 
     private static string ZipPathFor(string dir) => dir.TrimEnd('/', '\\') + ".zip";
 
+    private static bool VerifyPackageChecksums(IReadOnlyList<ZipEntrySpec> entries, out string? err)
+    {
+        err = null;
+        const string manifestName = "PACKAGE_SHA256SUMS.txt";
+        var manifestEntry = entries.FirstOrDefault(entry => string.Equals(entry.Name, manifestName, StringComparison.OrdinalIgnoreCase));
+        if (manifestEntry == null) return true;
+        try
+        {
+            var expected = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string raw in File.ReadAllLines(manifestEntry.File, Encoding.UTF8))
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                int separator = raw.IndexOf("  ", StringComparison.Ordinal);
+                if (separator != 64 || raw.Length <= separator + 2)
+                { err = "Manifest gói có dòng sai định dạng."; return false; }
+                string hash = raw[..separator];
+                string name = raw[(separator + 2)..];
+                if (hash.Any(c => !Uri.IsHexDigit(c)) || Path.GetFileName(name) != name ||
+                    !expected.TryAdd(name, hash))
+                { err = "Manifest gói có tên file hoặc mã băm không hợp lệ."; return false; }
+            }
+            var sourceEntries = entries.Where(entry => !string.Equals(entry.Name, manifestName, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (expected.Count != sourceEntries.Count)
+            { err = $"Manifest gói ghi {expected.Count} file nhưng ZIP sẽ chứa {sourceEntries.Count} file khác manifest."; return false; }
+            foreach (var entry in sourceEntries)
+            {
+                if (!expected.TryGetValue(entry.Name, out string? wanted))
+                { err = "Manifest gói thiếu file " + entry.Name + "."; return false; }
+                using var stream = File.OpenRead(entry.File);
+                string actual = Convert.ToHexString(SHA256.HashData(stream));
+                if (!string.Equals(actual, wanted, StringComparison.OrdinalIgnoreCase))
+                { err = "SHA-256 gói không khớp: " + entry.Name + " đã thay đổi."; return false; }
+            }
+            return true;
+        }
+        catch (Exception ex) { err = "Không đọc/kiểm tra được manifest gói: " + ex.Message; return false; }
+    }
+
     /// <summary>Đóng gói ZIP một thư mục test có sẵn (.inp và .out).</summary>
     public static bool ZipTestFolder(string dir, Settings st, IJobLog log, out string? zipPath)
     {
@@ -105,6 +164,21 @@ public static class Job
         if (inputs.Count == 0)
         {
             log.Line($"Thư mục {dir} không có file .inp nào để nén.");
+            return false;
+        }
+        string? checksumError = FileManager.VerifyTestChecksumManifest(dir, out _);
+        if (checksumError == "Chưa có manifest SHA-256.")
+        {
+            if (!FileManager.WriteTestChecksumManifest(dir, out int written, out checksumError))
+            {
+                log.Line("LỖI: " + checksumError);
+                return false;
+            }
+            log.Line($"Đã ghi manifest SHA-256 mới cho {written} file test.");
+        }
+        else if (checksumError != null)
+        {
+            log.Line("LỖI: không đóng gói bộ test đã thay đổi hoặc hỏng: " + checksumError);
             return false;
         }
         var entries = new List<ZipEntrySpec>();
@@ -120,6 +194,18 @@ public static class Job
                 outs++;
             }
             else missing.Add(Path.GetFileNameWithoutExtension(inp));
+        }
+        string checksumManifest = Path.Combine(dir, FileManager.ChecksumFile);
+        if (File.Exists(checksumManifest)) entries.Add(new ZipEntrySpec(FileManager.ChecksumFile, checksumManifest));
+        foreach (string sidecar in new[] { FileManager.InfoFile, "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt", "problem.ojdraft.json" })
+        {
+            string sidecarPath = Path.Combine(dir, sidecar);
+            if (File.Exists(sidecarPath)) entries.Add(new ZipEntrySpec(sidecar, sidecarPath));
+        }
+        if (!VerifyPackageChecksums(entries, out string? packageChecksumError))
+        {
+            log.Line("LỖI: không đóng gói được vì " + packageChecksumError);
+            return false;
         }
         string zip = ZipPathFor(dir);
         if (!ZipService.Create(zip, entries, st.ZipCompress, out var zs, out string? err))
@@ -176,35 +262,57 @@ public static class Job
         var result = new JobResult { OutDir = job.OutDir };
         ulong seed = job.Seed ?? Generator.RandomSeed();
         result.Seed = seed;
-        if (Generator.ValidateFullConfig(p, job.Cfg) is { } ce)
+        var groups = job.Groups.Count > 0
+            ? job.Groups
+            : new List<TestGroupSpec> { new() { Name = "Tất cả", TestCount = job.GeneratedTestCount > 0 ? job.GeneratedTestCount : Math.Max(1, job.TestCount - job.ManualTests.Count), Cfg = job.Cfg } };
+        foreach (var group in groups)
         {
-            log.Line("LỖI cấu hình: " + ce);
-            result.ExitCode = 2;
-            result.Error = ce;
-            return result;
+            if (Generator.ValidateFullConfig(p, group.Cfg) is { } ce)
+            {
+                log.Line($"LỖI cấu hình nhóm '{group.Name}': " + ce);
+                result.ExitCode = 2;
+                result.Error = ce;
+                return result;
+            }
         }
+        string shownTitle = job.ProblemName.Trim().Length == 0 ? p.Title : job.ProblemName.Trim();
         log.Line("");
-        log.Line($"=== Sinh test: {p.Title} [{p.Id}] ===");
+        log.Line($"=== Sinh test: {shownTitle} [{(job.ProblemCode.Length == 0 ? p.Id : job.ProblemCode)}] ===");
         log.Line($"  Số test : {job.TestCount}");
         log.Line($"  Seed    : {Util.LL(seed)}  (dùng lại seed này + cùng cấu hình để tạo lại đúng bộ test)");
         log.Line($"  Thư mục : {job.OutDir}");
-        log.Write(p.DescribeConfig(job.Cfg));
-        ulong est = p.EstimateMaxBytes(job.Cfg);
+        if (job.Groups.Count == 0) log.Write(p.DescribeConfig(job.Cfg));
+        else
+        {
+            log.Line("  Kế hoạch nhóm:");
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var group = groups[i];
+                ulong groupSeed = Generator.GroupSeed(seed, i, group.Seed);
+                log.Line($"    {i + 1}. {group.Name}: {group.TestCount} test, seed {Util.LL(groupSeed)}");
+                log.Write(p.DescribeConfig(group.Cfg));
+            }
+        }
+        double estimatedBytes = 0;
+        foreach (var group in groups)
+            estimatedBytes += (double)p.EstimateMaxBytes(group.Cfg) * group.TestCount;
+        ulong est = estimatedBytes >= ulong.MaxValue ? ulong.MaxValue : (ulong)estimatedBytes;
         if (est > 0)
         {
-            double total = (double)est * job.TestCount;
-            if (total > 1024.0 * 1024 * 1024)
-                log.Line($"  ! Cảnh báo: dung lượng input có thể lên tới ~{Util.FmtBytes((ulong)total)}. Kiểm tra dung lượng ổ đĩa.");
+            if (est > 1024UL * 1024 * 1024)
+                log.Line($"  ! Cảnh báo: dung lượng input có thể lên tới ~{Util.FmtBytes(est)}. Kiểm tra dung lượng ổ đĩa.");
         }
 
         var gr = new GenerateRequest
         {
             Problem = p,
             Cfg = job.Cfg,
-            TestCount = job.TestCount,
+            TestCount = job.GeneratedTestCount > 0 ? job.GeneratedTestCount : Math.Max(1, job.TestCount - job.ManualTests.Count),
             Seed = seed,
             OutDir = job.OutDir,
             Prefix = st.Prefix,
+            Groups = job.Groups,
+            ManualTests = job.ManualTests,
         };
         GenerateResult g = Generator.GenerateInputs(gr, log, ct);
         if (!g.Ok)
@@ -219,6 +327,11 @@ public static class Job
         result.InputCount = g.Inputs.Count;
         log.Line($"Đã tạo {g.Inputs.Count} file .inp (mỗi file đã được kiểm tra đúng định dạng và giới hạn).");
         foreach (var w in g.Warnings) log.Line("  ! " + w);
+        CoverageReport coverage = CoverageAnalyzer.Analyze(p, g.Inputs, groups, job.ManualTests);
+        result.Coverage = coverage;
+        log.Line("");
+        log.Line("--- Độ phủ test và gợi ý ---");
+        log.Write(coverage.ToText());
 
         SetStatus status = SetStatus.InputOnly;
         OutputReport rep = new();
@@ -246,6 +359,20 @@ public static class Job
             {
                 log.Line($"Chạy lời giải trên {g.Inputs.Count} test (timeout {st.TimeoutMs} ms/test):");
                 rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct);
+                for (int i = 0; i < Math.Min(job.ManualTests.Count, g.Inputs.Count); i++)
+                {
+                    var manual = job.ManualTests[i];
+                    if (!manual.IsSample || manual.ExpectedOutput.Trim().Length == 0) continue;
+                    string outPath = Path.ChangeExtension(g.Inputs[i], ".out");
+                    if (!File.Exists(outPath)) continue;
+                    string actual = FileManager.ReadText(outPath);
+                    if (NormalizeOutputTokens(actual) != NormalizeOutputTokens(manual.ExpectedOutput))
+                    {
+                        string warning = $"Sample '{manual.Name}': output nhập tay khác output của lời giải chuẩn.";
+                        coverage.Suggestions.Add(warning);
+                        log.Line("  ! " + warning);
+                    }
+                }
                 cancelled = rep.Cancelled;
                 status = rep.Failures.Count == 0 && !rep.Cancelled ? SetStatus.Complete : SetStatus.Incomplete;
                 foreach (var w in rep.Warnings) log.Line("  ! " + w);
@@ -259,12 +386,37 @@ public static class Job
         var info = new StringBuilder();
         info.Append("ojgen ").Append(Util.Version).Append(" - thông tin bộ test\n");
         info.Append("Thời gian tạo : ").Append(NowStr()).Append('\n');
-        info.Append("Dạng bài      : ").Append(p.Id).Append(" - ").Append(p.Title).Append('\n');
+        info.Append("Dạng bài      : ").Append(p.Id).Append(" - ").Append(shownTitle).Append('\n');
+        if (job.ProblemCode.Length > 0) info.Append("Mã bài        : ").Append(job.ProblemCode).Append('\n');
         info.Append("Số test       : ").Append(job.TestCount).Append('\n');
         info.Append("Seed          : ").Append(Util.LL(seed)).Append('\n');
         info.Append("Lời giải chuẩn: ").Append(solutionShown).Append('\n');
-        info.Append("Cấu hình:\n").Append(p.DescribeConfig(job.Cfg));
+        if (job.ManualTests.Count > 0)
+        {
+            info.Append("Test nhập tay:\n");
+            for (int i = 0; i < job.ManualTests.Count; i++)
+            {
+                var manual = job.ManualTests[i];
+                string fileName = FileManager.TestName(st.Prefix, i + 1, FileManager.TestNumberWidth(job.TestCount));
+                info.Append("  ").Append(fileName).Append(": ").Append(manual.Name)
+                    .Append(manual.IsSample ? " [sample]" : "").Append(" · ").Append(manual.ConfigName).Append('\n');
+            }
+        }
+        if (job.Groups.Count == 0) info.Append("Cấu hình:\n").Append(p.DescribeConfig(job.Cfg));
+        else
+        {
+            info.Append("Kế hoạch nhóm:\n");
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var group = groups[i];
+                info.Append("Nhóm ").Append(i + 1).Append(": ").Append(group.Name)
+                    .Append(" ( ").Append(group.TestCount).Append(" test, seed ")
+                    .Append(Util.LL(Generator.GroupSeed(seed, i, group.Seed))).Append(" )\n")
+                    .Append(p.DescribeConfig(group.Cfg));
+            }
+        }
         info.Append("Định dạng input:\n").Append(p.FormatDescription);
+        info.Append("\nĐộ phủ test và gợi ý:\n").Append(coverage.ToText()).Append('\n');
         info.Append("Trạng thái    : ").Append(StatusLine(status)).Append('\n');
         if (cancelled) info.Append("  (Người dùng đã hủy giữa chừng.)\n");
         if (compileErr.Length > 0) info.Append("  Lỗi biên dịch/chuẩn bị lời giải:\n").Append(compileErr).Append('\n');
@@ -272,6 +424,9 @@ public static class Job
         foreach (var w in g.Warnings) info.Append("Cảnh báo: ").Append(w).Append('\n');
         foreach (var w in rep.Warnings) info.Append("Cảnh báo: ").Append(w).Append('\n');
         FileManager.WriteFile(Path.Combine(job.OutDir, FileManager.InfoFile), info.ToString());
+        if (FileManager.WriteTestChecksumManifest(job.OutDir, out int checksumCount, out string? checksumError))
+            log.Line($"Đã ghi SHA-256 cho {checksumCount} file test vào {FileManager.ChecksumFile}.");
+        else log.Line("  ! " + checksumError);
 
         log.Line("");
         log.Line((cancelled ? "ĐÃ HỦY. " : "") + "KẾT QUẢ: " + StatusLine(status));
@@ -328,6 +483,9 @@ public static class Job
         if (note.Length > 0) info.Append(note).Append('\n');
         if (rep.Failures.Count > 0) info.Append("  Test lỗi:\n").Append(FailureSummary(rep));
         FileManager.WriteFile(Path.Combine(dir, FileManager.InfoFile), info.ToString());
+        if (FileManager.WriteTestChecksumManifest(dir, out int checksumCount, out string? checksumError))
+            log.Line($"Đã cập nhật SHA-256 cho {checksumCount} file test.");
+        else log.Line("  ! " + checksumError);
         log.Line("KẾT QUẢ: " + StatusLine(status));
         result.Status = status;
         result.Report = rep;

@@ -1,0 +1,63 @@
+<Window x:Class="OjGen.Gui.PackageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Đóng gói bài toán" Width="780" Height="700" MinWidth="680" MinHeight="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}" Style="{StaticResource SlideInWindow}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Đóng gói tài liệu và test" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock x:Name="lblSummary" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16">
+                <TextBlock Text="Tên thư mục gói" Style="{StaticResource FieldLabel}" />
+                <TextBox x:Name="txtPackageName" />
+                <TextBlock Text="Thư mục cha" Style="{StaticResource FieldLabel}" />
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseParent_Click" Style="{StaticResource OutlineButton}" />
+                    <TextBox x:Name="txtParent" />
+                </DockPanel>
+                <CheckBox x:Name="chkTests" Content="Kèm toàn bộ test .inp/.out đã tạo" Margin="3,12,3,3" />
+                <TextBlock x:Name="lblTestsHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="22,0,0,4" />
+                <CheckBox x:Name="chkZip" Content="Tạo thêm file ZIP" IsChecked="True" Margin="3,3,3,10" />
+                <Separator />
+                <CheckBox x:Name="chkSolution" Content="Kèm lời giải chuẩn (tắt theo mặc định)" Margin="3,10,3,3" />
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseSolution_Click" Style="{StaticResource OutlineButton}" />
+                    <TextBox x:Name="txtSolution" />
+                </DockPanel>
+                <TextBlock Text="Validator (tùy chọn)" Style="{StaticResource FieldLabel}" />
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseValidator_Click" Style="{StaticResource OutlineButton}" />
+                    <TextBox x:Name="txtValidator" />
+                </DockPanel>
+                <TextBlock Text="Nếu chọn validator, OjGen sẽ chạy nó trên mọi input và kiểm tra nó từ chối các input sai mẫu. Validator cần đọc stdin hoặc nhận đường dẫn input ở argv[1]." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,2,3,4" />
+                <TextBlock Text="Lời giải độc lập để đối chiếu (tùy chọn)" Style="{StaticResource FieldLabel}" />
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseCandidate_Click" Style="{StaticResource OutlineButton}" />
+                    <TextBox x:Name="txtCandidate" ToolTip="Chỉ dùng trong kiểm định, không được thêm vào gói." />
+                </DockPanel>
+                <TextBlock Text="OjGen so sánh với lời giải chuẩn trên 100 test nhỏ có seed cố định." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,2,3,4" />
+                <TextBlock Text="Checker (tùy chọn)" Style="{StaticResource FieldLabel}" />
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseChecker_Click" Style="{StaticResource OutlineButton}" />
+                    <TextBox x:Name="txtChecker" />
+                </DockPanel>
+                <TextBlock Text="Trước khi đóng gói, OjGen kiểm tra đề, test, output, độ phủ trường hợp nhỏ/biên/stress và tính toàn vẹn SHA-256; validator đã chọn cũng được chạy. Checker được đưa vào gói nhưng không tự chạy vì giao diện khác nhau giữa các judge. Lỗi sẽ chặn tạo gói; lưu ý cần được xác nhận." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,10,3,0" />
+                <TextBlock Text="Validator và lời giải độc lập sẽ chạy trên máy bạn với quyền hiện tại, không có sandbox. Chỉ chọn chương trình bạn tin tưởng." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,6,3,0" />
+                <TextBlock Text="Gói gồm statement.md/.html, hồ sơ generator, samples/, tools/ và tests/ nếu bật. Nếu tên thư mục đã tồn tại, OjGen tự chọn hậu tố mới." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,6,3,0" />
+            </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <DockPanel Grid.Row="2" Margin="0,12,0,0">
+            <TextBlock x:Name="lblError" VerticalAlignment="Center" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Tạo gói" Click="BtnCreate_Click" Padding="18,7" />
+                <Button Content="Hủy" Click="BtnCancel_Click" Padding="18,7" Margin="6,0,0,0" IsCancel="True" Style="{StaticResource OutlineButton}" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

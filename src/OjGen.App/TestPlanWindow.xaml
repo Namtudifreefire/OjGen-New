@@ -1,0 +1,75 @@
+<Window x:Class="OjGen.Gui.TestPlanWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kế hoạch nhóm test" Width="900" Height="700" MinWidth="760" MinHeight="580"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}" Style="{StaticResource SlideInWindow}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Chia test thành nhóm cấu hình" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="Mỗi nhóm có số lượng, seed và bộ ràng buộc riêng. OjGen sẽ đánh số file liên tục và ghi cấu hình từng nhóm vào ojgen_info.txt." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="12" Margin="0,0,10,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="＋ Thêm nhóm" Click="BtnAdd_Click" Padding="10,6" />
+                        <Button Content="Xóa" Click="BtnDelete_Click" Padding="10,6" Margin="6,0,0,0" Style="{StaticResource OutlineButton}" />
+                    </StackPanel>
+                    <ListBox x:Name="lstGroups" SelectionChanged="LstGroups_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding TestCount, StringFormat={}{0} test}" Style="{StaticResource HintText}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /><ColumnDefinition Width="110" /></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Tên nhóm" VerticalAlignment="Center" />
+                        <TextBox x:Name="txtName" Grid.Column="1" Margin="0,0,10,0" TextChanged="Draft_TextChanged" />
+                        <TextBlock Grid.Column="2" Text="Số test" VerticalAlignment="Center" />
+                        <TextBox x:Name="txtCount" Grid.Column="3" ToolTip="1 .. 10000; tổng các nhóm tối đa 10000" TextChanged="Draft_TextChanged" />
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Seed riêng" VerticalAlignment="Center" />
+                        <TextBox x:Name="txtSeed" Grid.Column="1" ToolTip="Để trống = OjGen tự tạo seed ổn định từ seed chính." TextChanged="Draft_TextChanged" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="paramHost" Margin="0,0,8,0" />
+                    </ScrollViewer>
+                    <TextBlock Grid.Row="3" x:Name="lblError" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                </Grid>
+            </Border>
+        </Grid>
+        <DockPanel Grid.Row="2" Margin="0,12,0,0">
+            <TextBlock x:Name="lblTotal" VerticalAlignment="Center" Style="{StaticResource HintText}" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Dùng kế hoạch" Click="BtnFinish_Click" Padding="18,7" />
+                <Button Content="Hủy" Click="BtnCancel_Click" Padding="18,7" Margin="6,0,0,0" IsCancel="True" Style="{StaticResource OutlineButton}" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

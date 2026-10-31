@@ -5,6 +5,17 @@ namespace OjGen.Cli;
 
 internal static class CliApp
 {
+    private sealed class CliProblemProfile
+    {
+        public int Version { get; set; } = 1;
+        public string ProblemId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Code { get; set; } = "";
+        public string SolutionPath { get; set; } = "";
+        public Dictionary<string, long> Ints { get; set; } = new();
+        public Dictionary<string, string> Texts { get; set; } = new();
+    }
+
     private static string UsageText()
     {
         var s = new System.Text.StringBuilder();
@@ -17,6 +28,8 @@ internal static class CliApp
         s.Append("  ojgen --problem <dạng> [tùy chọn]  Sinh bộ test\n");
         s.Append("  ojgen --regen-out <thư mục> --solution <file>   Tạo lại .out cho thư mục test có sẵn\n");
         s.Append("  ojgen --zip-dir <thư mục>          Đóng gói ZIP thư mục test có sẵn\n");
+        s.Append("  ojgen --problem <dạng> --audit ...  Kiểm định phát hành, ghi báo cáo và chỉ ZIP khi đạt\n");
+        s.Append("  ojgen --audit-dir <thư mục> --problem <dạng>  Kiểm định/đóng gói test có sẵn\n");
         s.Append("  ojgen --selftest                   Tự kiểm tra các module và bộ tạo ZIP\n");
         s.Append("  ojgen --help | --version\n\n");
         s.Append("TÙY CHỌN KHI SINH TEST\n");
@@ -37,7 +50,18 @@ internal static class CliApp
         s.Append("  --prefix P           Tiền tố tên file test (mặc định test)\n");
         s.Append("  --no-compress        ZIP chỉ lưu, không nén\n");
         s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini trong thư mục hiện tại)\n");
+        s.Append("  --profile FILE       Dùng hồ sơ .ojproblem.json để nạp dạng bài và tham số mặc định\n");
         s.Append("  --<tham số> GIÁ_TRỊ  Tham số riêng của dạng bài, xem bằng --info <dạng>\n\n");
+        s.Append("KIỂM ĐỊNH PHÁT HÀNH (tùy chọn)\n");
+        s.Append("  --audit               Kiểm định bộ vừa sinh trước khi tạo ZIP\n");
+        s.Append("  --audit-dir DIR       Kiểm định thư mục test có sẵn; mặc định tạo ZIP nếu đạt\n");
+        s.Append("  --statement FILE      Bản nháp .ojdraft.json từ giao diện để rà nội dung đề\n");
+        s.Append("  --validator FILE      Chạy validator trên mọi input hợp lệ và một số input sai\n");
+        s.Append("  --checker FILE        Xác nhận checker tồn tại; không tự chạy vì giao diện tùy judge\n");
+        s.Append("  --compare-solution FILE  Đối chiếu với --solution trên 100 test nhỏ\n");
+        s.Append("  --allow-audit-warnings  Cho phép ZIP khi chỉ còn cảnh báo (lỗi vẫn chặn)\n");
+        s.Append("  Khi --audit-dir, dùng --tests làm số input mong đợi; --seed giúp kiểm tra tái lập.\n");
+        s.Append("  Báo cáo: AUDIT_REPORT.txt; ZIP kèm SHA256SUMS.txt, PACKAGE.txt và PACKAGE_SHA256SUMS.txt.\n\n");
         s.Append("CHỦ ĐỀ THUẬT TOÁN\n");
         s.Append("  --topics liệt kê chủ đề VNOI, QBOJ, Codeforces, LQDOJ, LTOJ và DMOJ; dùng --topic-source để lọc nguồn.\n");
         s.Append("  --topic chỉ hiển thị chi tiết nếu đứng một mình; khi kèm tùy chọn sinh test, OjGen dùng khuôn gợi ý\n");
@@ -54,7 +78,9 @@ internal static class CliApp
         s.Append("  ojgen --problem custom --tests 100 --n 20 --min -1000 --max 1000 --solution sol.cpp\n");
         s.Append("  ojgen --problem custom --tests 50 --bounds \"1:10,50:100,-20:20\" --solution \"D:\\OJ\\bai 1\\sol.cpp\"\n");
         s.Append("  ojgen --problem graph --tests 30 --minN 5 --maxN 1000 --minM 4 --maxM 5000 --connected 1 --weighted 1\n\n");
-        s.Append("MÃ THOÁT: 0 = thành công (hoàn chỉnh hoặc chỉ input), 1 = lời giải lỗi ở một số test, 2 = lỗi tham số/cấu hình.\n");
+        s.Append("  ojgen --problem array --tests 30 --seed 2024 --solution sol.cpp --audit --no-zip\n");
+        s.Append("  ojgen --audit-dir output/array --problem array --tests 30 --seed 2024 --solution sol.cpp --allow-audit-warnings\n\n");
+        s.Append("MÃ THOÁT: 0 = thành công, 1 = lời giải lỗi/đã hủy, 2 = lỗi tham số, cấu hình hoặc kiểm định phát hành.\n");
         return s.ToString();
     }
 
@@ -188,12 +214,14 @@ internal static class CliApp
     private static readonly HashSet<string> FlagOnly = new()
     {
         "help", "h", "list", "topics", "version", "selftest", "force", "no-zip", "zip", "zip-incomplete", "rebuild", "no-compress",
+        "audit", "allow-audit-warnings",
     };
 
     private static readonly HashSet<string> GlobalKeys = new()
     {
         "problem", "tests", "seed", "solution", "out", "timeout", "max-output-mb", "memory-mb", "compiler", "cxxflags",
         "prefix", "info", "regen-out", "zip-dir", "python", "settings", "topic", "topic-source",
+        "audit-dir", "validator", "checker", "compare-solution", "statement", "profile",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -337,6 +365,49 @@ internal static class CliApp
             return 0;
         }
 
+        bool auditDirMode = a.Kv.ContainsKey("audit-dir");
+        bool auditMode = a.Flags.Contains("audit") || auditDirMode;
+        bool auditOptionsSupplied = new[] { "validator", "checker", "compare-solution", "statement" }.Any(a.Kv.ContainsKey);
+        if (a.Flags.Contains("audit") && auditDirMode)
+        {
+            Err("LỖI: dùng --audit khi sinh test hoặc --audit-dir khi kiểm định thư mục có sẵn.");
+            return 2;
+        }
+        if (!auditMode && (auditOptionsSupplied || a.Flags.Contains("allow-audit-warnings")))
+        {
+            Err("LỖI: --validator, --checker, --compare-solution, --statement và --allow-audit-warnings cần --audit hoặc --audit-dir.");
+            return 2;
+        }
+        if (auditDirMode && (a.Kv.ContainsKey("out") || a.Kv.ContainsKey("regen-out") || a.Kv.ContainsKey("zip-dir")))
+        {
+            Err("LỖI: --audit-dir không dùng cùng --out, --regen-out hoặc --zip-dir.");
+            return 2;
+        }
+        if (auditMode && (a.Kv.ContainsKey("regen-out") || a.Kv.ContainsKey("zip-dir")))
+        {
+            Err("LỖI: kiểm định phát hành không dùng cùng --regen-out hoặc --zip-dir.");
+            return 2;
+        }
+
+        CliProblemProfile? profile = null;
+        if (a.Kv.TryGetValue("profile", out var profilePath))
+        {
+            try
+            {
+                profile = System.Text.Json.JsonSerializer.Deserialize<CliProblemProfile>(File.ReadAllText(profilePath),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (profile == null || profile.Version != 1 || Problems.Find(profile.ProblemId) == null)
+                    throw new InvalidDataException("Phiên bản hồ sơ không hỗ trợ hoặc không tìm thấy khuôn bài.");
+                if (a.Kv.TryGetValue("problem", out var requestedId) && !string.Equals(requestedId, profile.ProblemId, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("--problem không khớp ProblemId trong hồ sơ.");
+            }
+            catch (Exception ex)
+            {
+                Err("LỖI hồ sơ: " + ex.Message);
+                return 2;
+            }
+        }
+
         var st = Settings.Load(a.Kv.GetValueOrDefault("settings"), out string? warn);
         if (!string.IsNullOrEmpty(warn)) Console.Out.WriteLine(warn);
         if (!ApplySettingsOverrides(a, st, out err)) { Err("LỖI: " + err); return 2; }
@@ -351,6 +422,7 @@ internal static class CliApp
         }
         string pid;
         if (a.Kv.TryGetValue("problem", out var explicitProblemId)) pid = explicitProblemId;
+        else if (profile is not null) pid = profile.ProblemId;
         else if (selectedTopic is not null)
         {
             pid = selectedTopic.RecommendedProblemId;
@@ -367,6 +439,16 @@ internal static class CliApp
             Console.Out.WriteLine($"Chủ đề {TopicKey(selectedTopic)} gợi ý --problem {selectedTopic.RecommendedProblemId}; đang dùng dạng --problem {prob.Id} theo yêu cầu.");
 
         var job = new JobSpec { Problem = prob, Cfg = prob.DefaultConfig() };
+        if (profile is not null)
+        {
+            foreach (var param in prob.Params)
+            {
+                if (param.Type == ParamType.Text && profile.Texts.TryGetValue(param.Key, out var textValue)) job.Cfg.SetText(param.Key, textValue);
+                else if (param.Type != ParamType.Text && profile.Ints.TryGetValue(param.Key, out var intValue)) job.Cfg.Set(param.Key, intValue);
+            }
+            job.ProblemName = profile.Name;
+            job.ProblemCode = profile.Code;
+        }
         var explicitKeys = new HashSet<string>();
         var specs = prob.Params.ToDictionary(x => x.Key);
         foreach (var k in a.Order)
@@ -418,6 +500,48 @@ internal static class CliApp
             job.SolutionPath = sol;
             if (sol.Trim().Length == 0) { Err("LỖI: --solution rỗng."); return 2; }
         }
+        else if (profile is not null) job.SolutionPath = profile.SolutionPath;
+
+        if (auditDirMode)
+        {
+            string auditDir = a.Kv["audit-dir"];
+            if (!Directory.Exists(auditDir)) { Err("LỖI: không tìm thấy thư mục --audit-dir: " + auditDir); return 2; }
+            int inputCount = FileManager.ListFilesWithExt(auditDir, ".inp").Count;
+            var auditSpec = new JobSpec
+            {
+                Problem = prob,
+                Cfg = job.Cfg.Clone(),
+                TestCount = a.Kv.ContainsKey("tests") ? job.TestCount : inputCount,
+                GeneratedTestCount = a.Kv.ContainsKey("tests") ? job.TestCount : inputCount,
+                Seed = job.Seed,
+                OutDir = auditDir,
+            };
+            var auditOptions = new CliAuditOptions
+            {
+                Problem = prob,
+                Config = job.Cfg,
+                Settings = st,
+                TestDirectory = auditDir,
+                ExpectedTestCount = a.Kv.ContainsKey("tests") ? job.TestCount : 0,
+                ReferenceSolution = job.SolutionPath,
+                ValidatorPath = a.Kv.GetValueOrDefault("validator", ""),
+                CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
+                CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
+                StatementPath = a.Kv.GetValueOrDefault("statement", ""),
+                Seed = job.Seed,
+                DifferentialSeed = job.Seed ?? Generator.RandomSeed(),
+                GeneratedSpec = auditSpec,
+            };
+            CliAuditReport auditReport = CliReleaseAudit.Run(auditOptions, log);
+            if (auditReport.Cancelled) return 1;
+            if (auditReport.HasErrors || (zipMode == ZipMode.Yes && auditReport.WarningCount > 0 && !a.Flags.Contains("allow-audit-warnings")))
+            {
+                Err("LỖI: không tạo ZIP. Sửa lỗi hoặc dùng --allow-audit-warnings để chấp nhận các cảnh báo đã xem trong AUDIT_REPORT.txt.");
+                return 2;
+            }
+            if (zipMode == ZipMode.Yes && !Job.ZipTestFolder(auditDir, st, log, out _)) return 2;
+            return 0;
+        }
         string outDir = a.Kv.TryGetValue("out", out var od) ? od : Path.Combine(st.OutputRoot, prob.Id);
         if (!Job.PrepareOutDir(ref outDir, a.Flags.Contains("force") ? ExistingPolicy.Overwrite : ExistingPolicy.NewDir, log, out string? outDirError))
         {
@@ -428,6 +552,37 @@ internal static class CliApp
         job.Zip = zipMode;
         job.ZipIncomplete = a.Flags.Contains("zip-incomplete");
         job.ForceRebuild = a.Flags.Contains("rebuild");
-        return Job.Run(job, st, log).ExitCode;
+        if (!auditMode) return Job.Run(job, st, log).ExitCode;
+
+        job.Zip = ZipMode.No;
+        JobResult generated = Job.Run(job, st, log);
+        if (generated.ExitCode >= 2 || generated.Cancelled) return generated.ExitCode;
+        job.Seed = generated.Seed;
+        var generatedAuditOptions = new CliAuditOptions
+        {
+            Problem = prob,
+            Config = job.Cfg,
+            Settings = st,
+            TestDirectory = outDir,
+            ExpectedTestCount = job.TestCount,
+            ReferenceSolution = job.SolutionPath,
+            ValidatorPath = a.Kv.GetValueOrDefault("validator", ""),
+            CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
+            CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
+            StatementPath = a.Kv.GetValueOrDefault("statement", ""),
+            Seed = generated.Seed,
+            DifferentialSeed = generated.Seed,
+            GeneratedSpec = job,
+        };
+        CliAuditReport generatedAudit = CliReleaseAudit.Run(generatedAuditOptions, log);
+        if (generatedAudit.Cancelled) return 1;
+        if (generated.ExitCode != 0) return generated.ExitCode;
+        if (generatedAudit.HasErrors || (zipMode == ZipMode.Yes && generatedAudit.WarningCount > 0 && !a.Flags.Contains("allow-audit-warnings")))
+        {
+            Err("LỖI: kiểm định chưa được chấp nhận nên không tạo ZIP. Xem AUDIT_REPORT.txt; dùng --allow-audit-warnings nếu đã rà soát các cảnh báo.");
+            return 2;
+        }
+        if (zipMode == ZipMode.Yes && !Job.ZipTestFolder(outDir, st, log, out _)) return 2;
+        return 0;
     }
 }
