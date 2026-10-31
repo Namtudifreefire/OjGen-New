@@ -46,7 +46,11 @@
                     <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseChecker_Click" Style="{StaticResource OutlineButton}" />
                     <TextBox x:Name="txtChecker" />
                 </DockPanel>
-                <TextBlock Text="Trước khi đóng gói, OjGen kiểm tra đề, test, output, độ phủ trường hợp nhỏ/biên/stress và tính toàn vẹn SHA-256; validator đã chọn cũng được chạy. Checker được đưa vào gói nhưng không tự chạy vì giao diện khác nhau giữa các judge. Lỗi sẽ chặn tạo gói; lưu ý cần được xác nhận." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,10,3,0" />
+                <TextBlock Text="Đối số checker" Style="{StaticResource FieldLabel}" />
+                <TextBox x:Name="txtCheckerArguments" Text="{}{input} {output} {answer}" ToolTip="Placeholder: {input}, {output}, {answer}, {test}. Mặc định dùng output chính thức cho cả output và answer." />
+                <TextBlock Text="Timeout checker (ms, 0 = theo cài đặt chung)" Style="{StaticResource FieldLabel}" />
+                <TextBox x:Name="txtCheckerTimeout" Text="0" />
+                <TextBlock Text="Trước khi đóng gói, OjGen kiểm tra đề, test, output, độ phủ trường hợp nhỏ/biên/stress và tính toàn vẹn SHA-256; validator và checker đã chọn cũng được chạy. Checker nhận input, output chính thức và answer qua các placeholder ở trên. Lỗi sẽ chặn tạo gói; lưu ý cần được xác nhận." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,10,3,0" />
                 <TextBlock Text="Validator và lời giải độc lập sẽ chạy trên máy bạn với quyền hiện tại, không có sandbox. Chỉ chọn chương trình bạn tin tưởng." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,6,3,0" />
                 <TextBlock Text="Gói gồm statement.md/.html, hồ sơ generator, samples/, tools/ và tests/ nếu bật. Nếu tên thư mục đã tồn tại, OjGen tự chọn hậu tố mới." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,6,3,0" />
             </StackPanel>

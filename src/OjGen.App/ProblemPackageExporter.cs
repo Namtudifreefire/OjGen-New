@@ -18,6 +18,8 @@ internal sealed class ProblemPackageOptions
     public bool IncludeReferenceSolution { get; set; }
     public string ValidatorPath { get; set; } = "";
     public string CheckerPath { get; set; } = "";
+    public string CheckerArguments { get; set; } = "{input} {output} {answer}";
+    public int CheckerTimeoutMs { get; set; }
     public string CandidateSolution { get; set; } = "";
     public string AuditReport { get; set; } = "";
     public ulong? TestSeed { get; set; }
@@ -198,6 +200,8 @@ internal static class ProblemPackageExporter
             .Append("Reference solution file SHA-256: ").Append(HashOptionalFile(options.ReferenceSolution)).Append('\n')
             .Append("Validator file SHA-256: ").Append(HashOptionalFile(options.ValidatorPath)).Append('\n')
             .Append("Checker file SHA-256: ").Append(HashOptionalFile(options.CheckerPath)).Append('\n')
+            .Append("Checker argv template: ").Append(options.CheckerArguments).Append('\n')
+            .Append("Checker timeout: ").Append(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs.ToString() : "use application timeout").Append(" ms\n")
             .Append("Independent solution file SHA-256: ").Append(HashOptionalFile(options.CandidateSolution)).Append('\n')
             .Append("Tests: ").Append(inputs).Append(" input, ").Append(outputs).Append(" output\n")
             .Append("Samples: ").Append(samples).Append(" (sample output files are included when available)\n")

@@ -51,13 +51,16 @@ internal static class CliApp
         s.Append("  --no-compress        ZIP chỉ lưu, không nén\n");
         s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini trong thư mục hiện tại)\n");
         s.Append("  --profile FILE       Dùng hồ sơ .ojproblem.json để nạp dạng bài và tham số mặc định\n");
+        s.Append("  --plan FILE          Tái sử dụng kế hoạch nhóm .ojplan.json (chứa số lượng/cấu hình từng nhóm)\n");
         s.Append("  --<tham số> GIÁ_TRỊ  Tham số riêng của dạng bài, xem bằng --info <dạng>\n\n");
         s.Append("KIỂM ĐỊNH PHÁT HÀNH (tùy chọn)\n");
         s.Append("  --audit               Kiểm định bộ vừa sinh trước khi tạo ZIP\n");
         s.Append("  --audit-dir DIR       Kiểm định thư mục test có sẵn; mặc định tạo ZIP nếu đạt\n");
         s.Append("  --statement FILE      Bản nháp .ojdraft.json từ giao diện để rà nội dung đề\n");
         s.Append("  --validator FILE      Chạy validator trên mọi input hợp lệ và một số input sai\n");
-        s.Append("  --checker FILE        Xác nhận checker tồn tại; không tự chạy vì giao diện tùy judge\n");
+        s.Append("  --checker FILE        Chạy checker trên từng input/output trong audit\n");
+        s.Append("  --checker-args TEXT   Mẫu argv: {input} {output} {answer} {test}\n");
+        s.Append("  --checker-timeout MS  Timeout riêng mỗi lần chạy checker (mặc định theo --timeout)\n");
         s.Append("  --compare-solution FILE  Đối chiếu với --solution trên 100 test nhỏ\n");
         s.Append("  --allow-audit-warnings  Cho phép ZIP khi chỉ còn cảnh báo (lỗi vẫn chặn)\n");
         s.Append("  Khi --audit-dir, dùng --tests làm số input mong đợi; --seed giúp kiểm tra tái lập.\n");
@@ -221,7 +224,7 @@ internal static class CliApp
     {
         "problem", "tests", "seed", "solution", "out", "timeout", "max-output-mb", "memory-mb", "compiler", "cxxflags",
         "prefix", "info", "regen-out", "zip-dir", "python", "settings", "topic", "topic-source",
-        "audit-dir", "validator", "checker", "compare-solution", "statement", "profile",
+        "audit-dir", "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "profile", "plan",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -367,7 +370,7 @@ internal static class CliApp
 
         bool auditDirMode = a.Kv.ContainsKey("audit-dir");
         bool auditMode = a.Flags.Contains("audit") || auditDirMode;
-        bool auditOptionsSupplied = new[] { "validator", "checker", "compare-solution", "statement" }.Any(a.Kv.ContainsKey);
+        bool auditOptionsSupplied = new[] { "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement" }.Any(a.Kv.ContainsKey);
         if (a.Flags.Contains("audit") && auditDirMode)
         {
             Err("LỖI: dùng --audit khi sinh test hoặc --audit-dir khi kiểm định thư mục có sẵn.");
@@ -375,7 +378,7 @@ internal static class CliApp
         }
         if (!auditMode && (auditOptionsSupplied || a.Flags.Contains("allow-audit-warnings")))
         {
-            Err("LỖI: --validator, --checker, --compare-solution, --statement và --allow-audit-warnings cần --audit hoặc --audit-dir.");
+            Err("LỖI: tùy chọn audit cần --audit hoặc --audit-dir.");
             return 2;
         }
         if (auditDirMode && (a.Kv.ContainsKey("out") || a.Kv.ContainsKey("regen-out") || a.Kv.ContainsKey("zip-dir")))
@@ -408,9 +411,27 @@ internal static class CliApp
             }
         }
 
+        TestPlanProfile? testPlan = null;
+        if (a.Kv.TryGetValue("plan", out var planPath))
+        {
+            try { testPlan = TestPlanProfile.Load(planPath); }
+            catch (Exception ex) { Err("LỖI kế hoạch test: " + ex.Message); return 2; }
+            if (profile != null) { Err("LỖI: dùng --plan hoặc --profile trong một lần gọi, không dùng cùng nhau."); return 2; }
+            if (auditDirMode) { Err("LỖI: --plan dùng để sinh test; --audit-dir kiểm định thư mục có sẵn."); return 2; }
+        }
+
         var st = Settings.Load(a.Kv.GetValueOrDefault("settings"), out string? warn);
         if (!string.IsNullOrEmpty(warn)) Console.Out.WriteLine(warn);
         if (!ApplySettingsOverrides(a, st, out err)) { Err("LỖI: " + err); return 2; }
+        int checkerTimeoutMs = 0;
+        if (a.Kv.TryGetValue("checker-timeout", out var checkerTimeoutText))
+        {
+            if (!Util.ParseLL(checkerTimeoutText, out long parsedCheckerTimeout) || parsedCheckerTimeout < 1 || parsedCheckerTimeout > 3600000)
+            { Err("LỖI: --checker-timeout phải là số nguyên trong [1, 3600000] ms."); return 2; }
+            checkerTimeoutMs = (int)parsedCheckerTimeout;
+        }
+        if ((a.Kv.ContainsKey("checker-args") || a.Kv.ContainsKey("checker-timeout")) && !a.Kv.ContainsKey("checker"))
+        { Err("LỖI: --checker-args và --checker-timeout cần đi cùng --checker."); return 2; }
         ZipMode zipMode = a.Flags.Contains("no-zip") ? ZipMode.No : ZipMode.Yes;
 
         if (a.Kv.TryGetValue("zip-dir", out var zdir))
@@ -423,6 +444,7 @@ internal static class CliApp
         string pid;
         if (a.Kv.TryGetValue("problem", out var explicitProblemId)) pid = explicitProblemId;
         else if (profile is not null) pid = profile.ProblemId;
+        else if (testPlan is not null) pid = testPlan.ProblemId;
         else if (selectedTopic is not null)
         {
             pid = selectedTopic.RecommendedProblemId;
@@ -482,14 +504,27 @@ internal static class CliApp
         }
         prob.FinalizeCliConfig(job.Cfg, explicitKeys);
         if (Generator.ValidateFullConfig(prob, job.Cfg) is { } ce) { Err("LỖI cấu hình: " + ce); return 2; }
+        if (testPlan != null && explicitKeys.Count > 0)
+        { Err("LỖI: --plan đã chứa cấu hình cho từng nhóm; không truyền thêm tham số riêng của khuôn."); return 2; }
 
         long tests = 10;
+        if (testPlan != null && a.Kv.ContainsKey("tests"))
+        { Err("LỖI: số test đã được lưu trong --plan; bỏ --tests."); return 2; }
         if (a.Kv.TryGetValue("tests", out var ts) && (!Util.ParseLL(ts, out tests) || tests < 1 || tests > Generator.MaxTests))
         {
             Err($"LỖI: --tests phải là số nguyên trong [1, {Generator.MaxTests}].");
             return 2;
         }
         job.TestCount = (int)tests;
+        if (testPlan != null)
+        {
+            try
+            {
+                job.Groups = testPlan.ToGroups(prob);
+                job.TestCount = testPlan.TotalTestCount;
+            }
+            catch (Exception ex) { Err("LỖI kế hoạch test: " + ex.Message); return 2; }
+        }
         if (a.Kv.TryGetValue("seed", out var ss))
         {
             if (!Util.ParseULL(ss, out ulong sv)) { Err("LỖI: --seed phải là số nguyên không âm."); return 2; }
@@ -526,6 +561,8 @@ internal static class CliApp
                 ReferenceSolution = job.SolutionPath,
                 ValidatorPath = a.Kv.GetValueOrDefault("validator", ""),
                 CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
+                CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
+                CheckerTimeoutMs = checkerTimeoutMs,
                 CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
                 StatementPath = a.Kv.GetValueOrDefault("statement", ""),
                 Seed = job.Seed,
@@ -568,6 +605,8 @@ internal static class CliApp
             ReferenceSolution = job.SolutionPath,
             ValidatorPath = a.Kv.GetValueOrDefault("validator", ""),
             CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
+            CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
+            CheckerTimeoutMs = checkerTimeoutMs,
             CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
             StatementPath = a.Kv.GetValueOrDefault("statement", ""),
             Seed = generated.Seed,

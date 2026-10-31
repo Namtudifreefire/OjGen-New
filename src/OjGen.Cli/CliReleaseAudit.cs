@@ -65,6 +65,8 @@ internal sealed class CliAuditOptions
     public string ReferenceSolution { get; init; } = "";
     public string ValidatorPath { get; init; } = "";
     public string CheckerPath { get; init; } = "";
+    public string CheckerArguments { get; init; } = "{input} {output} {answer}";
+    public int CheckerTimeoutMs { get; init; }
     public string CandidateSolution { get; init; } = "";
     public string StatementPath { get; init; } = "";
     public ulong? Seed { get; init; }
@@ -286,8 +288,18 @@ internal static class CliReleaseAudit
 
         if (options.CheckerPath.Trim().Length > 0)
         {
-            if (!File.Exists(options.CheckerPath)) report.Add(CliAuditLevel.Error, "Checker", "Không tìm thấy file checker đã chọn.");
-            else report.Add(CliAuditLevel.Info, "Checker", "Đã xác nhận file checker; không chạy tự động vì giao diện đối số tùy judge.");
+            if (inputs.Count == 0) report.Add(CliAuditLevel.Warning, "Checker", "Không có input để chạy checker.");
+            else
+            {
+                var checker = CheckerAuditRunner.Run(options.CheckerPath, options.CheckerArguments, inputs,
+                    options.Settings, Path.Combine(Path.GetTempPath(), "OjGen-Cli-ReleaseChecker"), log, ct,
+                    options.CheckerTimeoutMs);
+                if (checker.Cancelled) { report.Cancelled = true; return; }
+                if (checker.Ok)
+                    report.Add(CliAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : options.Settings.TimeoutMs)} ms).");
+                else
+                    report.Add(CliAuditLevel.Error, "Checker", checker.Error + (checker.Failed > 0 ? $"\nĐạt {checker.Passed}/{checker.Passed + checker.Failed} test." : ""));
+            }
         }
 
         if (options.CandidateSolution.Trim().Length == 0)
@@ -364,6 +376,8 @@ internal static class CliReleaseAudit
             .Append("Reference solution SHA-256: ").Append(OptionalHash(options.ReferenceSolution)).Append('\n')
             .Append("Validator SHA-256: ").Append(OptionalHash(options.ValidatorPath)).Append('\n')
             .Append("Checker SHA-256: ").Append(OptionalHash(options.CheckerPath)).Append('\n')
+            .Append("Checker argv template: ").Append(options.CheckerArguments).Append('\n')
+            .Append("Checker timeout: ").Append(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs.ToString() : "use application timeout").Append(" ms\n")
             .Append("Independent solution SHA-256: ").Append(OptionalHash(options.CandidateSolution)).Append('\n')
             .Append("Tests: ").Append(FileManager.ListFilesWithExt(options.TestDirectory, ".inp").Count).Append(" input\n")
             .Append("Package checksum manifest: ").Append(PackageChecksumFile).Append(" (").Append(count).Append(" files, excludes itself)\n")
@@ -460,11 +474,14 @@ internal static class CliReleaseAudit
                         new TestGroupSpec { Name = "Tất cả", TestCount = inputs.Count, Cfg = options.Config.Clone() },
                     };
                     var coverage = CoverageAnalyzer.Analyze(options.Problem, inputs, groups, options.GeneratedSpec?.ManualTests ?? new List<ManualTestSpec>());
-                    if (coverage.Suggestions.Count == 0) report.Add(CliAuditLevel.Pass, "Độ phủ test (heuristic)", "Không thấy thiếu chế độ rõ ràng từ tên nhóm và cấu hình.");
+                    foreach (string observation in coverage.Observations.Take(6))
+                        report.Add(CliAuditLevel.Info, "Độ phủ: phép đo", observation);
+                    report.Add(CliAuditLevel.Info, "Độ tin cậy độ phủ", coverage.Confidence);
+                    if (coverage.Suggestions.Count == 0) report.Add(CliAuditLevel.Pass, "Độ phủ test (heuristic + đo input)", "Không thấy thiếu chế độ rõ ràng từ tên nhóm, cấu hình và kích thước đã đo.");
                     else
                     {
-                        foreach (string suggestion in coverage.Suggestions.Take(6)) report.Add(CliAuditLevel.Warning, "Độ phủ test (heuristic)", suggestion);
-                        report.Add(CliAuditLevel.Info, "Độ phủ test", "Các gợi ý heuristic cần được so với trường hợp biên thực tế của đề.");
+                        foreach (string suggestion in coverage.Suggestions.Take(6)) report.Add(CliAuditLevel.Warning, "Độ phủ test (heuristic + đo input)", suggestion);
+                        report.Add(CliAuditLevel.Info, "Độ phủ test", "Các kết luận cần được so với trường hợp biên của đề.");
                     }
 
                     AuditReproducibility(inputs, options.GeneratedSpec, options.Settings, log, report, ct);

@@ -357,6 +357,8 @@ public partial class MainWindow : Window
             ReferenceSolution = options.ReferenceSolution,
             ValidatorPath = options.ValidatorPath,
             CheckerPath = options.CheckerPath,
+            CheckerArguments = options.CheckerArguments,
+            CheckerTimeoutMs = options.CheckerTimeoutMs,
             CandidateSolution = options.CandidateSolution,
             Seed = auditSeed,
             GeneratedSpec = generatedSpec,

@@ -48,6 +48,8 @@ internal sealed class ReleaseAuditOptions
     public string ReferenceSolution { get; set; } = "";
     public string ValidatorPath { get; set; } = "";
     public string CheckerPath { get; set; } = "";
+    public string CheckerArguments { get; set; } = "{input} {output} {answer}";
+    public int CheckerTimeoutMs { get; set; }
     public string CandidateSolution { get; set; } = "";
     public ulong Seed { get; set; }
     public JobSpec? GeneratedSpec { get; set; }
@@ -258,13 +260,16 @@ internal static class ReleaseAuditService
                     };
                 IReadOnlyList<ManualTestSpec> coverageManual = coverageSpec?.ManualTests ?? manualTests.ToList();
                 var coverage = CoverageAnalyzer.Analyze(problem, inputs, coverageGroups, coverageManual);
+                foreach (string observation in coverage.Observations.Take(6))
+                    report.Add(ReleaseAuditLevel.Info, "Độ phủ: phép đo", observation);
+                report.Add(ReleaseAuditLevel.Info, "Độ tin cậy độ phủ", coverage.Confidence);
                 if (coverage.Suggestions.Count == 0)
-                    report.Add(ReleaseAuditLevel.Pass, "Độ phủ test (heuristic)", "Không thấy thiếu chế độ rõ ràng từ tên nhóm và cấu hình.");
+                    report.Add(ReleaseAuditLevel.Pass, "Độ phủ test (heuristic + đo input)", "Không thấy thiếu chế độ rõ ràng từ tên nhóm, cấu hình và kích thước đã đo.");
                 else
                 {
                     foreach (string suggestion in coverage.Suggestions.Take(6))
-                        report.Add(ReleaseAuditLevel.Warning, "Độ phủ test (heuristic)", suggestion);
-                    report.Add(ReleaseAuditLevel.Info, "Độ phủ test", "Các gợi ý suy ra từ cấu hình/tên nhóm; cần so với các trường hợp biên thực tế của đề.");
+                        report.Add(ReleaseAuditLevel.Warning, "Độ phủ test (heuristic + đo input)", suggestion);
+                    report.Add(ReleaseAuditLevel.Info, "Độ phủ test", "Cần so với các trường hợp biên logic của đề.");
                 }
 
                 if (options.GeneratedSpec?.Problem.Id == problem.Id &&
@@ -293,8 +298,17 @@ internal static class ReleaseAuditService
 
             if (options.CheckerPath.Trim().Length > 0)
             {
-                if (!File.Exists(options.CheckerPath)) report.Add(ReleaseAuditLevel.Error, "Checker", "Không tìm thấy file checker đã chọn.");
-                else report.Add(ReleaseAuditLevel.Info, "Checker", "Đã xác nhận file tồn tại; checker không được chạy tự động vì giao diện đối số khác nhau giữa các judge.");
+                if (inputs.Count == 0) report.Add(ReleaseAuditLevel.Warning, "Checker", "Không có input để chạy checker.");
+                else
+                {
+                    var checker = CheckerAuditRunner.Run(options.CheckerPath, options.CheckerArguments, inputs,
+                        settings, Path.Combine(Path.GetTempPath(), "OjGen-ReleaseChecker"), log, ct, options.CheckerTimeoutMs);
+                    if (checker.Cancelled) { report.Cancelled = true; return report; }
+                    if (checker.Ok)
+                        report.Add(ReleaseAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : settings.TimeoutMs)} ms).");
+                    else
+                        report.Add(ReleaseAuditLevel.Error, "Checker", checker.Error + (checker.Failed > 0 ? $"\nĐạt {checker.Passed}/{checker.Passed + checker.Failed} test." : ""));
+                }
             }
 
             if (options.CandidateSolution.Trim().Length > 0)

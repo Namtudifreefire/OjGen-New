@@ -1,12 +1,15 @@
 // Util.cs - Hàm tiện ích dùng chung (chuyển từ util.cpp / common.h).
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 
 namespace OjGen.Core;
 
 public static class Util
 {
-    public const string Version = "3.1.0";
+    public static string Version { get; } =
+        typeof(Util).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+        ?? "0.0.0";
 
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     public static UTF8Encoding Utf8 => Utf8NoBom;

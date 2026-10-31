@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
+using Microsoft.Win32;
 using OjGen.Core;
 
 namespace OjGen.Gui;
@@ -143,6 +145,82 @@ public partial class TestPlanWindow : Window
         lstGroups.SelectedIndex = Math.Min(index, _groups.Count - 1);
         _switching = false;
         LoadGroup((TestGroupSpec)lstGroups.SelectedItem);
+    }
+
+    private void BtnClone_Click(object sender, RoutedEventArgs e)
+    {
+        if (_current == null || !StoreCurrent()) return;
+        if (_groups.Count >= Generator.MaxGroups) { lblError.Text = $"Chỉ hỗ trợ tối đa {Generator.MaxGroups} nhóm."; return; }
+        string baseName = _current.Name + " (bản sao)";
+        string name = baseName;
+        int suffix = 2;
+        while (_groups.Any(group => string.Equals(group.Name, name, StringComparison.OrdinalIgnoreCase)))
+            name = baseName + " " + suffix++;
+        var clone = _current.Clone();
+        clone.Name = name;
+        int index = lstGroups.SelectedIndex;
+        _groups.Insert(index + 1, clone);
+        lstGroups.SelectedItem = clone;
+    }
+
+    private void MoveCurrent(int delta)
+    {
+        if (_current == null || !StoreCurrent()) return;
+        int index = lstGroups.SelectedIndex;
+        int target = index + delta;
+        if (target < 0 || target >= _groups.Count) return;
+        _groups.Move(index, target);
+        lstGroups.SelectedItem = _groups[target];
+    }
+
+    private void BtnMoveUp_Click(object sender, RoutedEventArgs e) => MoveCurrent(-1);
+    private void BtnMoveDown_Click(object sender, RoutedEventArgs e) => MoveCurrent(1);
+
+    private void BtnSavePlan_Click(object sender, RoutedEventArgs e)
+    {
+        if (!StoreCurrent()) return;
+        long total = _groups.Sum(group => (long)group.TestCount);
+        if (total > Generator.MaxTests) { lblError.Text = $"Tổng số test không được vượt quá {Generator.MaxTests}."; return; }
+        var dialog = new SaveFileDialog
+        {
+            Title = "Lưu kế hoạch nhóm test",
+            Filter = "OjGen test plan (*.ojplan.json)|*.ojplan.json|JSON (*.json)|*.json",
+            DefaultExt = ".ojplan.json",
+            AddExtension = true,
+            FileName = _problem.Id + ".ojplan.json",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            TestPlanProfile.From(_problem, _groups).Save(dialog.FileName);
+            lblError.Text = "Kế hoạch đã được lưu.";
+        }
+        catch (Exception ex) { lblError.Text = "Không lưu được kế hoạch: " + ex.Message; }
+    }
+
+    private void BtnLoadPlan_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Mở kế hoạch nhóm test",
+            Filter = "OjGen test plan (*.ojplan.json)|*.ojplan.json|JSON (*.json)|*.json",
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var profile = TestPlanProfile.Load(dialog.FileName);
+            var loaded = profile.ToGroups(_problem);
+            _switching = true;
+            _groups.Clear();
+            foreach (var group in loaded) _groups.Add(group);
+            _current = null;
+            lstGroups.SelectedIndex = 0;
+            _switching = false;
+            LoadGroup(_groups[0]);
+            lblError.Text = $"Đã nạp {loaded.Count} nhóm, tổng {profile.TotalTestCount} test.";
+        }
+        catch (Exception ex) { lblError.Text = "Không nạp được kế hoạch: " + ex.Message; }
     }
 
     private void UpdateStatus()

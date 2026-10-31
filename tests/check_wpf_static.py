@@ -97,6 +97,13 @@ for f in xamls:
 # --- csproj tồn tại, Page mặc định
 if not os.path.exists(os.path.join(ROOT, 'OjGen.App.csproj')): err('thiếu OjGen.App.csproj')
 
+# --- các thao tác kế hoạch test phải cùng tồn tại để GUI không chỉ có nút rỗng
+plan_cs = os.path.join(ROOT, 'TestPlanWindow.xaml.cs')
+if os.path.exists(plan_cs):
+    plan_code = open(plan_cs, encoding='utf-8').read()
+    for token in ('TestPlanProfile.From', 'TestPlanProfile.Load', 'BtnClone_Click', 'MoveCurrent', 'BtnMoveUp_Click', 'BtnMoveDown_Click'):
+        if token not in plan_code: err(f'TestPlanWindow.xaml.cs: thiếu hỗ trợ kế hoạch test {token}')
+
 if errors:
     print('PHÁT HIỆN LỖI:')
     for e in errors: print('  -', e)

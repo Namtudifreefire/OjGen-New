@@ -54,6 +54,10 @@ public partial class PackageWindow : Window
         if (chkSolution.IsChecked == true && !File.Exists(txtSolution.Text.Trim().Trim('"'))) { lblError.Text = "Không tìm thấy lời giải chuẩn."; return; }
         if (txtValidator.Text.Trim().Length > 0 && !File.Exists(txtValidator.Text.Trim().Trim('"'))) { lblError.Text = "Không tìm thấy validator."; return; }
         if (txtChecker.Text.Trim().Length > 0 && !File.Exists(txtChecker.Text.Trim().Trim('"'))) { lblError.Text = "Không tìm thấy checker."; return; }
+        if (txtChecker.Text.Trim().Length > 0 && !CheckerAuditRunner.TryParseArguments(txtCheckerArguments.Text, out _, out string checkerArgsError)) { lblError.Text = checkerArgsError; return; }
+        int checkerTimeoutMs = 0;
+        if (!int.TryParse(txtCheckerTimeout.Text.Trim(), out checkerTimeoutMs) || checkerTimeoutMs < 0 || checkerTimeoutMs > 3600000)
+        { lblError.Text = "Timeout checker phải là số nguyên từ 0 đến 3600000 ms."; return; }
         if (txtCandidate.Text.Trim().Length > 0 && !File.Exists(txtCandidate.Text.Trim().Trim('"'))) { lblError.Text = "Không tìm thấy lời giải độc lập."; return; }
         Result = new ProblemPackageOptions
         {
@@ -66,6 +70,8 @@ public partial class PackageWindow : Window
             IncludeReferenceSolution = chkSolution.IsChecked == true,
             ValidatorPath = txtValidator.Text.Trim().Trim('"'),
             CheckerPath = txtChecker.Text.Trim().Trim('"'),
+            CheckerArguments = txtCheckerArguments.Text.Trim(),
+            CheckerTimeoutMs = checkerTimeoutMs,
             CandidateSolution = txtCandidate.Text.Trim().Trim('"'),
         };
         DialogResult = true;

@@ -1,6 +1,6 @@
-# OJGEN 3.1.0 — Trình tạo test cho lập trình thi đấu
+# OJGEN 3.2.0 — Trình tạo test cho lập trình thi đấu
 
-OJGEN 3.1.0 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
+OJGEN 3.2.0 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
 
 Ứng dụng hỗ trợ tạo dữ liệu kiểm thử, chạy lời giải chuẩn để sinh output, quản lý bộ test và đóng gói ZIP. OJGEN cung cấp cả giao diện đồ họa (GUI) và dòng lệnh (CLI), phù hợp với nhu cầu sử dụng trực tiếp lẫn tự động hóa.
 
@@ -16,13 +16,16 @@ OJGEN 3.1.0 là công cụ tạo bộ test tự động cho lập trình thi đ�
 - **Tùy chỉnh cấu hình:** Số lượng test, seed, timeout, giới hạn output, bộ nhớ và các tham số riêng.
 - **Wizard thiết lập bài:** Đặt tên/mã bài, chọn khuôn input, chỉnh giới hạn, gắn lời giải chuẩn và lưu/mở hồ sơ `.ojproblem.json` để dùng lại.
 - **Kế hoạch nhóm test:** Chia bộ test thành tối đa 100 nhóm; mỗi nhóm có số lượng, seed riêng tùy chọn và cấu hình tham số riêng. Seed nhóm để trống được tạo ổn định từ seed chính.
+- **Lưu và tái sử dụng kế hoạch:** Lưu/mở danh sách nhóm dạng `.ojplan.json` theo khuôn bài; nhân bản nhóm và đổi thứ tự trước khi sinh lại.
 - **Rà soát trước khi tạo:** Xem lại đường dẫn, số lượng và input mẫu đã qua xác thực cho từng nhóm trước khi ghi file; OjGen tiếp tục xác thực mọi input và kiểm tra ZIP sau khi tạo.
 - **Test mẫu / test nhập tay:** Mở hoặc dán input, chọn cấu hình để xác thực, đánh dấu sample; lời giải chuẩn tạo `.out` cùng các test sinh tự động.
 - **Kiểm thử đối chiếu:** Chạy lời giải chuẩn và lời giải cần thử trên cùng các test nhỏ, so sánh output và lưu các input gây khác biệt để tái hiện.
-- **Báo cáo độ phủ:** Sau khi sinh, xem các cấu hình và kiểu nhóm đã dùng, kích thước input cùng gợi ý trường hợp còn thiếu. Đây là phân tích heuristic, không thay thế rà soát theo đặc tả bài.
+- **Báo cáo độ phủ:** Đo kích thước như n/m/q/t từ input ở định dạng đã nhận diện, so với giới hạn cấu hình và gợi ý giá trị biên còn thiếu. Các kết luận vẫn được đánh dấu heuristic.
 - **Soạn đề và xem trước:** Viết mô tả, định dạng input/output, ràng buộc và ví dụ; xem trước dạng HTML, lưu bản nháp Markdown/JSON và kiểm tra nhất quán với cấu hình bài, test mẫu.
 - **Đóng gói bài:** Xuất statement Markdown/HTML, hồ sơ `.ojproblem.json`, test, ví dụ và tùy chọn lời giải chuẩn, validator, checker thành thư mục hoặc ZIP.
-- **Kiểm định trước phát hành:** Trước khi đóng gói, OjGen rà cấu trúc đề, định dạng input, đủ output, test trùng, độ phủ nhỏ/biên/stress, SHA-256 và khả năng tái lập input với cùng seed; lỗi chặn đóng gói, cảnh báo cần được xác nhận. Nếu chọn validator, OjGen chạy trên mọi input hợp lệ và một số input sai; có thể thêm lời giải độc lập để đối chiếu trên 100 test nhỏ. Checker được đóng gói nhưng không tự chạy vì mỗi judge có giao diện đối số riêng.
+- **Kiểm định trước phát hành:** Trước khi đóng gói, OjGen rà cấu trúc đề, định dạng input, đủ output, test trùng, độ phủ nhỏ/biên/stress, SHA-256 và khả năng tái lập input với cùng seed; lỗi chặn đóng gói, cảnh báo cần được xác nhận. Nếu chọn validator, OjGen chạy trên mọi input hợp lệ và một số input sai; có thể thêm lời giải độc lập để đối chiếu trên 100 test nhỏ. Checker chạy trên từng input/output chính thức theo mẫu đối số có thể cấu hình và timeout.
+- **Đồ thị có ràng buộc:** Sinh đồ thị liên thông, đơn, có trọng số, DAG và hai phía; validator từ chối cấu hình bất khả thi, chu trình DAG hoặc cạnh cùng phía.
+- **Đóng gói phát hành:** `scripts/package-release.ps1` kiểm tra phiên bản nguồn, chạy bộ hồi quy, publish GUI/CLI self-contained, smoke test, tạo cấu trúc ZIP cố định và checksum. GitHub Actions chỉ tạo draft release sau khi các bước đạt.
 - **Theo dõi tính toàn vẹn:** Mỗi bộ test có `SHA256SUMS.txt`; gói phát hành có `PACKAGE_SHA256SUMS.txt` cùng `AUDIT_REPORT.txt`. `PACKAGE.txt` ghi seed, phiên bản/runtime/OS và SHA-256 của các lời giải, validator, checker đã chọn.
 - **Khung validator/checker:** Tạo file khởi đầu C++ hoặc Python cho validator input và checker output kèm README các phần cần hoàn thiện.
 - **Tạo lại output:** Chạy lại lời giải trên bộ test có sẵn.
@@ -53,7 +56,7 @@ OjGen chia bộ chọn thành **dạng chính → nhánh con** theo cấu trúc 
 | Xâu và ký tự | `string` | Charset chữ, số, nhị phân, DNA hoặc tập ký tự tự chọn; độ dài cố định/ngẫu nhiên |
 | Ma trận và lưới | `matrix`, `grid` | Ma trận số, hai mảng song song, lưới ký tự có thể đặt `S` và `T` |
 | Danh sách cặp và đoạn | `pairs` | Cặp số tổng quát hoặc đoạn `[l, r]` |
-| Đồ thị và cây | `graph`, `tree` | Đồ thị có hướng/vô hướng, trọng số; cây đường thẳng, hình sao, nhị phân hoặc ngẫu nhiên |
+| Đồ thị và cây | `graph`, `tree` | Đồ thị có hướng/vô hướng, trọng số, đơn/liên thông, DAG, hai phía; cây đường thẳng, hình sao, nhị phân hoặc ngẫu nhiên |
 | Nhiều bộ test | `multi_test` | Mỗi bộ con là dãy số hoặc xâu |
 | Dữ liệu tùy chỉnh | `custom`, `chess_moves`, `chess_piece_moves`, `chess_knight_targets`, `chess_knight_reachability`, `chess_knight_shortest` | Khoảng số chung/riêng; đếm hoặc liệt kê nước đi các quân cờ; kiểm tra và tìm đường đi của quân Mã trên bàn 8×8 |
 
@@ -171,7 +174,7 @@ Kiểm định thư mục đã có. Có thể nạp tham số từ hồ sơ `.oj
 ojgen --audit-dir output/array --profile problem.ojproblem.json --tests 30 --seed 2024 --solution sol.cpp
 ```
 
-Thêm các bước tùy chọn: `--validator validator.py` chạy validator trên mọi input và một số biến thể sai; `--compare-solution brute.cpp` so với `--solution` trên 100 test nhỏ; `--checker checker.cpp` xác nhận file checker tồn tại nhưng không chạy vì giao diện tùy judge; `--statement draft.ojdraft.json` kiểm tra nội dung bản nháp được lưu từ giao diện. Cảnh báo chặn ZIP theo mặc định; sau khi đọc `AUDIT_REPORT.txt`, dùng `--allow-audit-warnings` để xác nhận. Lỗi kiểm định vẫn luôn chặn ZIP.
+Thêm các bước tùy chọn: `--validator validator.py` chạy validator trên mọi input và một số biến thể sai; `--compare-solution brute.cpp` so với `--solution` trên 100 test nhỏ; `--checker checker.cpp` chạy checker trên từng test. Mẫu mặc định là `--checker-args "{input} {output} {answer}"`; placeholder `{input}`, `{output}`, `{answer}`, `{test}` được truyền như argv, không qua shell. `--checker-timeout MS` đặt giới hạn mỗi lần chạy; mặc định dùng `--timeout`. Checker được thử với output chính thức cho cả `{output}` và `{answer}`. `--statement draft.ojdraft.json` kiểm tra nội dung bản nháp được lưu từ giao diện. Cảnh báo chặn ZIP theo mặc định; sau khi đọc `AUDIT_REPORT.txt`, dùng `--allow-audit-warnings` để xác nhận. Lỗi kiểm định vẫn luôn chặn ZIP.
 
 Gói kiểm định gồm `AUDIT_REPORT.txt`, `PACKAGE.txt`, `PACKAGE_SHA256SUMS.txt` và `SHA256SUMS.txt`. Khi chạy `--zip-dir`, OjGen kiểm tra các manifest có sẵn và không đóng gói nếu nội dung đã đổi.
 
@@ -182,6 +185,13 @@ ojgen --selftest
 ```
 
 Xem toàn bộ tùy chọn bằng `ojgen --help`.
+
+Tạo bộ DAG hoặc đồ thị hai phía:
+
+```bash
+ojgen --problem graph --directed 1 --dag 1 --connected 1 --tests 50 --seed 2026
+ojgen --problem graph --bipartite 1 --simple 1 --connected 1 --tests 50 --seed 2026
+```
 
 ## 5. Yêu cầu sử dụng
 
@@ -204,14 +214,24 @@ Kết quả xác minh bản 3.1.0:
 
 So sánh 145 cấu hình với phiên bản C++ là kết quả đã ghi nhận trước đây; chưa chạy lại trong đợt xác minh 3.1.0 này.
 
+Kết quả xác minh mã nguồn 3.2.0 trên Windows:
+
+- `tests/run_tests.sh`: 82/82 kiểm tra đầu-cuối đạt; `ojgen --selftest`: 319/319 kiểm tra đạt.
+- `tests/check_wpf_static.py`: 17/17 tệp XAML hợp lệ.
+- Đã publish thử GUI và CLI win-x64; CLI báo đúng phiên bản và vượt self-test, GUI vượt smoke test khởi động.
+- Gói ZIP có cả `GUI/OjGen.exe` và `CLI/ojgen.exe`, đủ tài liệu, manifest SHA-256 của các tệp và checksum riêng cho ZIP.
+- Các lệnh publish có cảnh báo NU1900 vì môi trường không truy cập được NuGet để tải dữ liệu lỗ hổng; restore, build, publish và smoke test vẫn hoàn tất.
+
+Để tạo gói phát hành Windows x64 sau khi build và kiểm tra đạt, chạy `scripts/package-release.ps1`. Trên GitHub, workflow **Build and draft release** chạy toàn bộ kiểm tra, tạo ZIP/checksum và mở draft release; workflow không phát hành công khai tự động.
+
 ## 7. Ghi công và giấy phép
 
-OJGEN 3.1.0 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
+OJGEN 3.2.0 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
 
 - **Tác giả ban đầu:** `minhquackk`.
 - **Tác giả/chủ sở hữu dự án nguồn được ghi nhận:** `Namtudifreefire/thienthuongthienha_duyngadocton_`.
 - **Tham khảo giao diện và chủ đề:** [TQLTK](https://github.com/Namtudifreefire/TQLTK).
 - **Giấy phép:** MIT — xem file [`LICENSE`](LICENSE) trong repository.
 
-OJGEN 3.1.0 là phiên bản chuyển đổi và mở rộng từ dự án gốc. Vui lòng giữ nguyên thông tin bản quyền, ghi công tác giả và các thông báo giấy phép liên quan khi phân phối lại.
+OJGEN 3.2.0 là phiên bản chuyển đổi và mở rộng từ dự án gốc. Vui lòng giữ nguyên thông tin bản quyền, ghi công tác giả và các thông báo giấy phép liên quan khi phân phối lại.
 

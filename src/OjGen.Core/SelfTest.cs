@@ -88,6 +88,9 @@ public static class SelfTest
                 NoTexts, 40, "đa đồ thị có khuyên"),
             C("graph", new[] { ("minN", 1L), ("maxN", 1L), ("minM", 0L), ("maxM", 0L) }, NoTexts, 1, "một đỉnh"),
             C("graph", new[] { ("minN", 2L), ("maxN", 50L), ("minM", 0L), ("maxM", 60L), ("connected", 1L), ("directed", 1L) }, NoTexts, 40, "có hướng liên thông yếu"),
+            C("graph", new[] { ("minN", 20L), ("maxN", 20L), ("minM", 19L), ("maxM", 90L), ("connected", 1L), ("directed", 1L), ("dag", 1L) }, NoTexts, 20, "DAG liên thông"),
+            C("graph", new[] { ("minN", 20L), ("maxN", 20L), ("minM", 19L), ("maxM", 90L), ("connected", 1L), ("bipartite", 1L) }, NoTexts, 20, "đồ thị hai phía liên thông"),
+            C("graph", new[] { ("minN", 20L), ("maxN", 20L), ("minM", 90L), ("maxM", 90L), ("directed", 1L), ("dag", 1L), ("bipartite", 1L) }, NoTexts, 10, "DAG hai phía dày"),
             C("graph", new[] { ("minN", 200000L), ("maxN", 200000L), ("minM", 199999L), ("maxM", 300000L), ("connected", 1L), ("weighted", 1L) },
                 NoTexts, 1, "đồ thị lớn"),
         };
@@ -140,6 +143,12 @@ public static class SelfTest
             Check(g.ValidateInput("3 2\n1 2\n2 4\n", gcfg) != null, "graph: đỉnh ngoài phạm vi bị từ chối");
             gcfg.Set("minM", 1);
             Check(g.ValidateInput("3 1\n1 2\n", gcfg) != null, "graph: không liên thông bị từ chối");
+            var dag = MakeConfig(g, C("graph", new[] { ("minN", 3L), ("maxN", 3L), ("minM", 2L), ("maxM", 3L), ("directed", 1L), ("dag", 1L) }, NoTexts, 0, ""));
+            Check(g.ValidateInput("3 2\n1 2\n2 3\n", dag) == null, "graph: DAG hợp lệ được chấp nhận");
+            Check(g.ValidateInput("3 3\n1 2\n2 3\n3 1\n", dag) != null, "graph: chu trình bị từ chối trong DAG");
+            var bipartite = MakeConfig(g, C("graph", new[] { ("minN", 3L), ("maxN", 3L), ("minM", 2L), ("maxM", 3L), ("bipartite", 1L) }, NoTexts, 0, ""));
+            Check(g.ValidateInput("3 2\n1 2\n1 3\n", bipartite) == null, "graph: đồ thị hai phía hợp lệ được chấp nhận");
+            Check(g.ValidateInput("3 3\n1 2\n2 3\n3 1\n", bipartite) != null, "graph: chu trình lẻ bị từ chối trong đồ thị hai phía");
         }
 
         var invalid = new List<Case>
@@ -160,6 +169,8 @@ public static class SelfTest
             C("custom", new[] { ("min", 10L), ("max", 1L) }, NoTexts, 0, "min > max"),
             C("graph", new[] { ("minN", 4L), ("maxN", 4L), ("minM", 7L), ("maxM", 7L) }, NoTexts, 0, "quá số cạnh đồ thị đơn"),
             C("graph", new[] { ("minN", 10L), ("maxN", 10L), ("minM", 3L), ("maxM", 3L), ("connected", 1L) }, NoTexts, 0, "không đủ cạnh để liên thông"),
+            C("graph", new[] { ("directed", 0L), ("dag", 1L) }, NoTexts, 0, "DAG cần có hướng"),
+            C("graph", new[] { ("minN", 4L), ("maxN", 4L), ("minM", 5L), ("maxM", 5L), ("bipartite", 1L) }, NoTexts, 0, "quá số cạnh đồ thị hai phía đơn"),
             C("two_ints", new[] { ("minA", 10L), ("maxA", 20L), ("minB", 1L), ("maxB", 5L), ("order", 1L) }, NoTexts, 0, "không thể a <= b"),
         };
         foreach (var c in invalid)
@@ -225,11 +236,37 @@ public static class SelfTest
             samples.Add(Encoding.ASCII.GetBytes(txt.ToString()));
             Check(Crc32(Encoding.ASCII.GetBytes("123456789")) == 0xCBF43926u, "CRC-32 chuẩn");
 
-            string dir = Path.Combine(Path.GetTempPath(), "ojgen_selftest_" + Environment.ProcessId);
+            string? tempRootValue = Environment.GetEnvironmentVariable("OJGEN_SELFTEST_ROOT");
+            string tempRoot = string.IsNullOrWhiteSpace(tempRootValue) ? Path.Combine(Path.GetTempPath(), "OjGen-selftest") : tempRootValue;
+            tempRoot = Path.GetFullPath(tempRoot);
+            Directory.CreateDirectory(tempRoot);
+            string dir = Path.Combine(tempRoot, Guid.NewGuid().ToString("N"));
             try
             {
-                if (Directory.Exists(dir)) Directory.Delete(dir, true);
                 Directory.CreateDirectory(dir);
+                var arrayProblem = Problems.Find("array")!;
+                var smallConfig = arrayProblem.DefaultConfig();
+                smallConfig.Set("minN", 1); smallConfig.Set("maxN", 5);
+                var largeConfig = arrayProblem.DefaultConfig();
+                largeConfig.Set("minN", 50); largeConfig.Set("maxN", 100);
+                var testGroups = new List<TestGroupSpec>
+                {
+                    new() { Name = "Nhỏ", TestCount = 3, Seed = 7, Cfg = smallConfig },
+                    new() { Name = "Stress", TestCount = 2, Seed = null, Cfg = largeConfig },
+                };
+                string planPath = Path.Combine(dir, "array.ojplan.json");
+                TestPlanProfile.From(arrayProblem, testGroups).Save(planPath);
+                var restoredGroups = TestPlanProfile.Load(planPath).ToGroups(arrayProblem);
+                Check(restoredGroups.Count == 2 && restoredGroups[0].Name == "Nhỏ" && restoredGroups[1].Name == "Stress" &&
+                    restoredGroups[0].Seed == 7 && restoredGroups[1].Cfg.I("maxN") == 100,
+                    "TestPlanProfile: lưu/nạp nhóm, thứ tự, seed và cấu hình");
+                try
+                {
+                    TestPlanProfile.Load(planPath).ToGroups(Problems.Find("graph")!);
+                    Check(false, "TestPlanProfile: từ chối khuôn không khớp");
+                }
+                catch (InvalidDataException) { Check(true, "TestPlanProfile: từ chối khuôn không khớp"); }
+
                 var entries = new List<ZipEntrySpec>();
                 var names = new List<string>();
                 for (int i = 0; i < samples.Count; i++)
@@ -254,7 +291,14 @@ public static class SelfTest
             }
             finally
             {
-                try { Directory.Delete(dir, true); } catch (Exception) { }
+                try
+                {
+                    string fullRoot = Path.GetFullPath(tempRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    string fullTarget = Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    if (string.Equals(Path.GetDirectoryName(fullTarget), fullRoot, StringComparison.OrdinalIgnoreCase) && Directory.Exists(fullTarget))
+                        Directory.Delete(fullTarget, true);
+                }
+                catch (Exception) { }
             }
         }
 

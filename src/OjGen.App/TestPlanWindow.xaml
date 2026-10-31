@@ -21,9 +21,16 @@
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Style="{StaticResource Card}" Padding="12" Margin="0,0,10,0">
                 <DockPanel>
-                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Content="＋ Thêm nhóm" Click="BtnAdd_Click" Padding="10,6" />
-                        <Button Content="Xóa" Click="BtnDelete_Click" Padding="10,6" Margin="6,0,0,0" Style="{StaticResource OutlineButton}" />
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <WrapPanel>
+                            <Button Content="＋ Thêm" Click="BtnAdd_Click" Padding="9,6" />
+                            <Button Content="Nhân bản" Click="BtnClone_Click" Padding="9,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" />
+                            <Button Content="Xóa" Click="BtnDelete_Click" Padding="9,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" />
+                        </WrapPanel>
+                        <WrapPanel Margin="0,5,0,0">
+                            <Button Content="↑ Lên" Click="BtnMoveUp_Click" Padding="9,5" Style="{StaticResource OutlineButton}" />
+                            <Button Content="↓ Xuống" Click="BtnMoveDown_Click" Padding="9,5" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" />
+                        </WrapPanel>
                     </StackPanel>
                     <ListBox x:Name="lstGroups" SelectionChanged="LstGroups_SelectionChanged">
                         <ListBox.ItemTemplate>
@@ -65,7 +72,11 @@
             </Border>
         </Grid>
         <DockPanel Grid.Row="2" Margin="0,12,0,0">
-            <TextBlock x:Name="lblTotal" VerticalAlignment="Center" Style="{StaticResource HintText}" />
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="Lưu kế hoạch…" Click="BtnSavePlan_Click" Padding="10,6" Style="{StaticResource OutlineButton}" />
+                <Button Content="Mở kế hoạch…" Click="BtnLoadPlan_Click" Padding="10,6" Margin="5,0,12,0" Style="{StaticResource OutlineButton}" />
+                <TextBlock x:Name="lblTotal" VerticalAlignment="Center" Style="{StaticResource HintText}" />
+            </StackPanel>
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Content="Dùng kế hoạch" Click="BtnFinish_Click" Padding="18,7" />
                 <Button Content="Hủy" Click="BtnCancel_Click" Padding="18,7" Margin="6,0,0,0" IsCancel="True" Style="{StaticResource OutlineButton}" />

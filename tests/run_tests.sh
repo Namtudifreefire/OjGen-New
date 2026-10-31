@@ -23,10 +23,15 @@ expect_exit() {  # expect_exit <mã mong đợi> <mô tả> <lệnh...>
 }
 count() { ls "$1" 2>/dev/null | grep -c "$2$" || true; }
 
-T=output/_tests
-rm -rf "$T"
-mkdir -p "$T"
+T="${OJGEN_TEST_DIR:-}"
+if [[ -z "$T" ]]; then
+    T=$(mktemp -d "${TMPDIR:-/tmp}/OjGen-tests.XXXXXX") || exit 1
+else
+    if [[ -e "$T" ]]; then echo "Thư mục kiểm thử đã tồn tại, không ghi đè: $T"; exit 2; fi
+    mkdir -p "$T" || exit 1
+fi
 LOG="$T/last.log"
+export OJGEN_SELFTEST_ROOT="${OJGEN_SELFTEST_ROOT:-output/.selftest}"
 COMMON=(--no-zip)
 SOL=tests/solutions
 
@@ -46,6 +51,14 @@ expect_exit 0 "--problem custom --tests 100 --seed 2024" "${BIN[@]}" --problem c
 echo "== Tái tạo bằng seed"
 "${BIN[@]}" --problem custom --tests 100 --seed 2024 --out "$T/custom_again" "${COMMON[@]}" > /dev/null
 diff -r -x ojgen_info.txt -x '*.zip' "$T/custom" "$T/custom_again" > /dev/null && ok "cùng seed -> cùng bộ test" || bad "cùng seed nhưng khác dữ liệu"
+
+echo "== Lưu và tái sử dụng kế hoạch nhóm"
+expect_exit 0 "--plan sinh đúng số test của các nhóm" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --seed 2024 --out "$T/plan" --no-zip
+[[ $(count "$T/plan" .inp) -eq 5 ]] && grep -q "Nhỏ" "$T/plan/ojgen_info.txt" && grep -q "Stress" "$T/plan/ojgen_info.txt" && ok "plan: nhóm, thứ tự và tổng test được áp dụng" || bad "plan: thiếu nhóm hoặc sai số test"
+expect_exit 0 "--plan tái lập cùng seed" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --seed 2024 --out "$T/plan_again" --no-zip
+diff -r -x ojgen_info.txt "$T/plan" "$T/plan_again" > /dev/null && ok "plan: nạp lại cho bộ input tái lập" || bad "plan: dữ liệu khác khi tái sử dụng"
+expect_exit 2 "--plan từ chối --tests ngoài kế hoạch" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --tests 5
+expect_exit 2 "--plan từ chối khuôn không khớp" "${BIN[@]}" --problem graph --plan tests/fixtures/array-plan.ojplan.json
 
 echo "== Lời giải chuẩn cho từng module"
 for m in single_n two_ints array queries string custom graph; do
@@ -95,6 +108,11 @@ expect_exit 2 "min > max" "${BIN[@]}" --problem custom --min 10 --max 1
 expect_exit 2 "bounds sai cú pháp" "${BIN[@]}" --problem custom --bounds "1:10,50:x"
 expect_exit 2 "tham số không tồn tại" "${BIN[@]}" --problem array --foo 1
 expect_exit 2 "đồ thị quá nhiều cạnh" "${BIN[@]}" --problem graph --minN 4 --maxN 4 --minM 7 --maxM 7
+expect_exit 0 "sinh DAG liên thông" "${BIN[@]}" --problem graph --tests 12 --seed 11 --directed 1 --dag 1 --connected 1 --minN 8 --maxN 20 --minM 7 --maxM 70 --out "$T/graph_dag" --no-zip
+[[ $(count "$T/graph_dag" .inp) -eq 12 ]] && ok "DAG: sinh đủ input đã xác thực" || bad "DAG: số input sai"
+expect_exit 0 "sinh đồ thị hai phía liên thông" "${BIN[@]}" --problem graph --tests 12 --seed 12 --bipartite 1 --connected 1 --minN 8 --maxN 20 --minM 7 --maxM 70 --out "$T/graph_bipartite" --no-zip
+[[ $(count "$T/graph_bipartite" .inp) -eq 12 ]] && ok "hai phía: sinh đủ input đã xác thực" || bad "hai phía: số input sai"
+expect_exit 2 "DAG cần directed" "${BIN[@]}" --problem graph --dag 1
 expect_exit 2 "dạng bài không tồn tại" "${BIN[@]}" --problem khong_co
 expect_exit 2 "seed âm" "${BIN[@]}" --problem custom --seed -5
 
@@ -120,6 +138,12 @@ echo "== Kiểm định phát hành CLI"
 expect_exit 0 "--audit chạy validator và so sánh lời giải" "${BIN[@]}" --problem array --tests 5 --seed 2024 --solution examples/solutions/array_sol.cpp --validator "$SOL/array_validator.py" --compare-solution "$SOL/array_alt_sol.py" --audit --no-zip --out "$T/audit"
 [[ -f "$T/audit/AUDIT_REPORT.txt" && -f "$T/audit/PACKAGE.txt" && -f "$T/audit/PACKAGE_SHA256SUMS.txt" ]] && ok "audit: lưu báo cáo và manifest gói" || bad "audit: thiếu báo cáo hoặc manifest"
 grep -q "Validator hai chiều" "$T/audit/AUDIT_REPORT.txt" && grep -q "Đối chiếu lời giải" "$T/audit/AUDIT_REPORT.txt" && ok "audit: validator hai chiều và đối chiếu lời giải đạt" || bad "audit: thiếu kết quả kiểm tra"
+grep -q "Giá trị n đo từ input" "$T/audit/AUDIT_REPORT.txt" && grep -q "Độ tin cậy độ phủ" "$T/audit/AUDIT_REPORT.txt" && ok "audit: ghi phép đo input và nhãn tin cậy độ phủ" || bad "audit: thiếu phép đo độ phủ"
+expect_exit 0 "audit chạy checker trên từng test" "${BIN[@]}" --problem array --tests 3 --seed 2024 --solution examples/solutions/array_sol.cpp --checker "$SOL/pass_checker.cpp" --checker-args "{input} {output} {answer}" --checker-timeout 5000 --audit --no-zip --out "$T/audit_checker"
+grep -q "Checker chấp nhận output chính thức trên đủ 3 test" "$T/audit_checker/AUDIT_REPORT.txt" && ok "checker: audit ghi nhận đủ test và timeout" || bad "checker: báo cáo thiếu kết quả"
+expect_exit 2 "audit chặn checker trả mã lỗi" "${BIN[@]}" --problem array --audit-dir "$T/audit_checker" --no-zip --checker "$SOL/reject_checker.cpp"
+grep -q "Checker" "$T/audit_checker/AUDIT_REPORT.txt" && grep -q "Lỗi khi chạy" "$T/audit_checker/AUDIT_REPORT.txt" && ok "checker: lỗi checker được ghi vào báo cáo" || bad "checker: không ghi nhận lỗi"
+expect_exit 2 "checker từ chối placeholder không hợp lệ" "${BIN[@]}" --problem array --audit-dir "$T/audit_checker" --no-zip --checker "$SOL/pass_checker.cpp" --checker-args "{input} {bad}"
 expect_exit 0 "--audit-dir tạo ZIP sau khi xác nhận cảnh báo" "${BIN[@]}" --audit-dir "$T/audit" --problem array --tests 5 --seed 2024 --solution examples/solutions/array_sol.cpp --allow-audit-warnings
 [[ -f "$T/audit.zip" ]] && unzip -Z1 "$T/audit.zip" | grep -qx "PACKAGE_SHA256SUMS.txt" && ok "audit ZIP: có package checksum" || bad "audit ZIP: thiếu gói/manifest"
 cp -R "$T/audit" "$T/audit_tampered"
