@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OjGen - Trình tạo bộ test cho bài lập trình thi đấu"
-        Height="730" Width="1180"
-        MinHeight="620" MinWidth="1000"
+        Height="800" Width="1180"
+        MinHeight="660" MinWidth="1000"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         Style="{StaticResource SlideInWindow}"
@@ -93,10 +93,10 @@
                     <Border Grid.Column="0" Style="{StaticResource Card}" Padding="0" Margin="0,0,12,0">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                             <StackPanel Margin="16">
-                                <TextBlock Text="1. Chọn bài toán" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
-                                <TextBlock Text="Chọn chủ đề để xem gợi ý, rồi chọn khuôn có định dạng input phù hợp với đề." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                <TextBlock Text="Bước 1 · Chọn khuôn input" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <TextBlock Text="Chọn dạng input giống đề bài. Chủ đề chỉ dùng để gợi ý khuôn." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10" />
 
-                                <TextBlock Text="Chủ đề thuật toán · QBOJ, VNOI, Codeforces, LQDOJ, LTOJ, DMOJ"
+                                <TextBlock Text="Chủ đề gợi ý (không bắt buộc)"
                                            Style="{StaticResource FieldLabel}" TextWrapping="Wrap" />
                                 <TextBlock x:Name="lblAlgorithmHint"
                                            Text="Tùy chọn: tag chỉ gợi ý khuôn; hãy đối chiếu định dạng với đề."
@@ -107,13 +107,13 @@
                                           MaxDropDownHeight="330"
                                           Margin="0,3,0,10"
                                           SelectionChanged="CmbAlgorithmTopic_SelectionChanged" />
-                                <TextBlock Text="Dạng chính" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Nhóm cấu trúc" Style="{StaticResource FieldLabel}" />
                                 <ComboBox x:Name="cmbMainCategory"
                                           IsTextSearchEnabled="True"
                                           MaxDropDownHeight="300"
                                           Margin="0,3,0,10"
                                           SelectionChanged="CmbMainCategory_SelectionChanged" />
-                                <TextBlock Text="Dạng phụ / khuôn input" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Khuôn input cụ thể" Style="{StaticResource FieldLabel}" />
                                 <ComboBox x:Name="cmbProblem"
                                           DisplayMemberPath="Title"
                                           IsTextSearchEnabled="True"
@@ -122,17 +122,17 @@
                                           Margin="0,3,0,10"
                                           SelectionChanged="CmbProblem_SelectionChanged" />
 
-                                <Button Content="🧭 Thiết lập bài…" Click="BtnSetupProblem_Click" Padding="12,7"
+                                <Button Content="✏ Đặt tên và mã bài…" Click="BtnSetupProblem_Click" Padding="12,7"
                                         HorizontalAlignment="Stretch" Style="{StaticResource OutlineButton}" />
-                                <Expander Header="Tùy chọn test" Margin="0,8,0,0"
+                                <Expander Header="Tùy chọn test và kiểm thử" Margin="0,8,0,0"
                                           Foreground="{DynamicResource TextPrimaryBrush}">
                                     <UniformGrid Columns="2" Margin="0,6,0,0">
                                         <Button Content="🧩 Nhóm test…" Click="BtnTestPlan_Click" Padding="10,6" Margin="0,0,5,5"
-                                                Style="{StaticResource OutlineButton}" />
-                                        <Button Content="📥 Test tay/mẫu…" Click="BtnManualTests_Click" Padding="10,6" Margin="5,0,0,5"
-                                                Style="{StaticResource OutlineButton}" />
+                                                Style="{StaticResource OutlineButton}" ToolTip="Chia test thành nhóm với số lượng và cấu hình riêng." />
+                                        <Button Content="📥 Thêm test tay / sample…" Click="BtnManualTests_Click" Padding="10,6" Margin="5,0,0,5"
+                                                Style="{StaticResource OutlineButton}" ToolTip="Nhập test mẫu hoặc test đặc biệt; input sẽ được kiểm tra trước khi lưu." />
                                         <Button Content="⚖ So sánh lời giải…" Click="BtnDifferential_Click" Padding="10,6" Margin="0,0,5,0"
-                                                Style="{StaticResource OutlineButton}" />
+                                                Style="{StaticResource OutlineButton}" ToolTip="Chạy và đối chiếu hai lời giải trên cùng bộ input." />
                                     </UniformGrid>
                                 </Expander>
 
@@ -152,7 +152,7 @@
                                              MaxHeight="190"
                                              Margin="0,6,0,0" />
                                 </Expander>
-                                <TextBlock Text="2. Tham số sinh test" FontSize="14" FontWeight="SemiBold" Margin="0,6,0,6" />
+                                <TextBlock Text="Bước 2 · Tham số sinh test" FontSize="14" FontWeight="SemiBold" Margin="0,6,0,6" />
                                 <StackPanel x:Name="paramHost" Margin="0,0,0,4" />
                                 <TextBlock x:Name="lblValidation"
                                            Foreground="{DynamicResource ErrorBrush}"
@@ -165,73 +165,81 @@
                     </Border>
 
                     <!-- ========== CỘT PHẢI ========== -->
-                    <Grid Grid.Column="1">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <ScrollViewer Grid.Column="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
 
                         <!-- Thiết lập chung -->
-                        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16">
+                        <Border Style="{StaticResource Card}" Padding="16">
                             <StackPanel>
-                                <TextBlock Text="3. Thiết lập tạo test" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <TextBlock Text="Bước 3 · Số lượng, lời giải và nơi lưu" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,8" />
                                 <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Số lượng test" VerticalAlignment="Center" />
-                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
-                                    <TextBox x:Name="txtTests" Text="10" Width="90" ToolTip="1 .. 10000" />
-                                    <TextBlock Text="Seed" VerticalAlignment="Center" Margin="18,0,6,0" />
-                                    <TextBox x:Name="txtSeed" Width="170"
-                                             ToolTip="Để trống = chọn ngẫu nhiên. Cùng seed + cùng cấu hình = cùng bộ test." />
-                                    <Button Content="🎲" Padding="9,6" Click="BtnRandomSeed_Click"
-                                            Style="{StaticResource OutlineButton}" ToolTip="Chọn seed ngẫu nhiên" />
-                                </StackPanel>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Số lượng test" VerticalAlignment="Center" />
+                                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtTests" Text="10" Width="130"
+                                             HorizontalAlignment="Left" ToolTip="Nhập từ 1 đến 10.000 test." />
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="1–10.000" VerticalAlignment="Center"
+                                               Style="{StaticResource HintText}" Margin="8,0,0,0" />
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Lời giải chuẩn" VerticalAlignment="Center" />
-                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtSolution"
-                                         AllowDrop="True"
-                                         PreviewDragOver="TxtSolution_PreviewDragOver"
-                                         Drop="TxtSolution_Drop"
-                                         ToolTip="C/C++, Python, Java, Kotlin, Pascal, C#, Rust, Go, .ojrun.json hoặc chương trình đã biên dịch. Kéo thả file vào đây. Để trống = chỉ tạo file input." />
-                                <Button Grid.Row="1" Grid.Column="2" Content="Chọn…" Click="BtnBrowseSolution_Click"
-                                        Style="{StaticResource OutlineButton}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Seed (tùy chọn)" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal">
+                                        <TextBox x:Name="txtSeed" Width="210"
+                                                 ToolTip="Để trống để chọn seed ngẫu nhiên. Cùng seed và cấu hình sẽ tái lập cùng bộ test." />
+                                        <Button Content="🎲" Padding="9,6" Click="BtnRandomSeed_Click"
+                                                Style="{StaticResource OutlineButton}" ToolTip="Tạo seed ngẫu nhiên" />
+                                    </StackPanel>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Thư mục đầu ra" VerticalAlignment="Center" />
-                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtOutDir" />
-                                <Button Grid.Row="2" Grid.Column="2" Content="Chọn…" Click="BtnBrowseOut_Click"
-                                        Style="{StaticResource OutlineButton}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Lời giải chuẩn (tùy chọn)" VerticalAlignment="Center" />
+                                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtSolution"
+                                             AllowDrop="True"
+                                             PreviewDragOver="TxtSolution_PreviewDragOver"
+                                             Drop="TxtSolution_Drop"
+                                             ToolTip="C/C++, Python, Java, Kotlin, Pascal, C#, Rust, Go, .ojrun.json hoặc chương trình đã biên dịch. Kéo thả file vào đây. Để trống = chỉ tạo file input." />
+                                    <Button Grid.Row="2" Grid.Column="2" Content="Chọn…" Click="BtnBrowseSolution_Click"
+                                            Style="{StaticResource OutlineButton}" />
 
-                                <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" x:Name="lblOutHint"
-                                           Style="{StaticResource HintText}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Thư mục đầu ra" VerticalAlignment="Center" />
+                                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtOutDir" />
+                                    <Button Grid.Row="3" Grid.Column="2" Content="Chọn…" Click="BtnBrowseOut_Click"
+                                            Style="{StaticResource OutlineButton}" />
 
-                                <WrapPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
-                                    <CheckBox x:Name="chkZip" Content="Nén ZIP sau khi tạo" IsChecked="True" Margin="3,3,18,3" />
-                                    <CheckBox x:Name="chkOverwrite" Content="Ghi đè nếu thư mục đã có test" Margin="3,3,18,3"
-                                              ToolTip="Mặc định: nếu thư mục đã có test thì tạo thư mục mới _2, _3…" />
-                                    <CheckBox x:Name="chkRebuild" Content="Biên dịch lại lời giải" Margin="3,3,18,3" />
-                                    <CheckBox x:Name="chkZipIncomplete" Content="Vẫn nén khi lời giải lỗi một số test" Margin="3,3,0,3" />
-                                    <CheckBox x:Name="chkResume" Content="Ghi checkpoint / tiếp tục" Margin="3,3,0,3"
-                                              ToolTip="Bật từ đầu để lưu từng input/output. Lần chạy sau chỉ tiếp tục khi cùng seed, cấu hình và lời giải." />
-                                </WrapPanel>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" x:Name="lblOutHint"
+                                               Style="{StaticResource HintText}" />
+
+                                    <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
+                                        <CheckBox x:Name="chkZip" Content="Tạo file ZIP sau khi sinh test" IsChecked="True" Margin="3,3,0,3" />
+                                        <Expander Header="Tùy chọn nâng cao" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,5,0,0">
+                                            <UniformGrid Columns="2" Margin="8,6,0,0">
+                                                <CheckBox x:Name="chkOverwrite" Content="Ghi đè test có sẵn" Margin="3"
+                                                          ToolTip="Mặc định OjGen tạo thư mục mới _2, _3… khi đích đã có test." />
+                                                <CheckBox x:Name="chkRebuild" Content="Biên dịch lại lời giải" Margin="3" />
+                                                <CheckBox x:Name="chkZipIncomplete" Content="Cho phép ZIP khi có test lỗi" Margin="3"
+                                                          ToolTip="Dùng khi cần giữ lại bộ dữ liệu chưa đủ output để kiểm tra tiếp." />
+                                                <CheckBox x:Name="chkResume" Content="Lưu checkpoint để tiếp tục" Margin="3"
+                                                          ToolTip="Bật từ đầu để lưu từng input/output. Lần chạy sau chỉ tiếp tục khi cùng seed, cấu hình và lời giải." />
+                                            </UniformGrid>
+                                        </Expander>
+                                    </StackPanel>
                                 </Grid>
                             </StackPanel>
                         </Border>
 
                         <!-- Xem trước -->
-                        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="16">
+                        <Border Style="{StaticResource Card}" Padding="16" MinHeight="250">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -242,19 +250,20 @@
                                             Content="👁 Kiểm tra input mẫu" Click="BtnPreview_Click"
                                             Style="{StaticResource OutlineButton}" />
                                     <StackPanel>
-                                        <TextBlock Text="4. Kiểm tra input mẫu" FontWeight="SemiBold" FontSize="14" />
+                                        <TextBlock Text="Bước 4 · Xem trước và kiểm tra" FontWeight="SemiBold" FontSize="14" />
                                         <TextBlock x:Name="lblPreviewInfo" Style="{StaticResource HintText}"
                                                    Text="Sinh thử test đầu tiên với seed đã nhập (không ghi file)." />
                                     </StackPanel>
                                 </DockPanel>
-                                <TextBox Grid.Row="1" x:Name="txtPreview" Style="{StaticResource MonoTextBox}" />
+                                <TextBox Grid.Row="1" x:Name="txtPreview" Style="{StaticResource MonoTextBox}"
+                                         MinHeight="180" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
                             </Grid>
                         </Border>
 
                         <!-- Hành động + kết quả -->
-                        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="16" Margin="0">
+                        <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="5. Tạo bộ test" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                <TextBlock Text="Bước 5 · Sinh bộ test" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                                 <DockPanel>
                                     <Button x:Name="btnCancel" DockPanel.Dock="Right" Padding="18,9" Content="⏹ Hủy"
                                             IsEnabled="False" Click="BtnCancel_Click"
@@ -290,7 +299,8 @@
                                 </Border>
                             </StackPanel>
                         </Border>
-                    </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </TabItem>
 
