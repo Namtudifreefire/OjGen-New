@@ -18,12 +18,14 @@ public static class FileManager
         err = null;
         try
         {
-            File.WriteAllBytes(path, data);
+            AtomicFile.WriteAllBytes(path, data);
             return true;
         }
         catch (DirectoryNotFoundException) { err = "Không tạo được file: " + path; }
         catch (IOException ex) { err = $"Lỗi khi ghi file (ổ đĩa đầy?): {path} ({ex.Message})"; }
         catch (UnauthorizedAccessException) { err = "Không có quyền ghi file: " + path; }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or System.Security.SecurityException)
+        { err = $"Không ghi được file {path}: {ex.Message}"; }
         return false;
     }
 
@@ -93,7 +95,12 @@ public static class FileManager
             foreach (var f in Directory.EnumerateFiles(dir))
                 if (string.Equals(Path.GetExtension(f), ext, StringComparison.OrdinalIgnoreCase)) res.Add(f);
         }
-        catch (Exception) { }
+        catch (DirectoryNotFoundException)
+        {
+            if (Directory.Exists(dir)) throw;
+            res.Clear();
+            return res;
+        }
         res.Sort((x, y) =>
         {
             string nx = Path.GetFileName(x), ny = Path.GetFileName(y);
@@ -125,7 +132,7 @@ public static class FileManager
                 string hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
                 lines.Append(hash).Append("  ").Append(Path.GetFileName(file)).Append('\n');
             }
-            File.WriteAllText(Path.Combine(dir, ChecksumFile), lines.ToString(), new UTF8Encoding(false));
+            AtomicFile.WriteAllText(Path.Combine(dir, ChecksumFile), lines.ToString(), new UTF8Encoding(false));
             fileCount = files.Count;
             return true;
         }
@@ -185,8 +192,17 @@ public static class FileManager
     public static long ClearTestFiles(string dir, out string? err)
     {
         err = null;
-        var files = ListFilesWithExt(dir, ".inp");
-        files.AddRange(ListFilesWithExt(dir, ".out"));
+        List<string> files;
+        try
+        {
+            files = ListFilesWithExt(dir, ".inp");
+            files.AddRange(ListFilesWithExt(dir, ".out"));
+        }
+        catch (Exception ex)
+        {
+            err = $"Không thể liệt kê file test trong {dir}: {ex.Message}";
+            return -1;
+        }
         string info = Path.Combine(dir, InfoFile);
         if (File.Exists(info)) files.Add(info);
         string checksums = Path.Combine(dir, ChecksumFile);

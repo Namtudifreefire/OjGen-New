@@ -158,6 +158,7 @@ public abstract class Problem
 /// <summary>Danh sách các dạng bài. Thêm module mới: tạo lớp con của Problem rồi thêm vào All.</summary>
 public static class Problems
 {
+    private static readonly object Sync = new();
     private static readonly List<Problem> BuiltIns = new()
     {
         new SingleNProblem(),
@@ -182,21 +183,37 @@ public static class Problems
         // new MyProblem(),   // <- thêm module mới tại đây
     };
 
-    public static IReadOnlyList<Problem> All => BuiltIns;
-
-    public static bool Register(Problem problem)
+    public static IReadOnlyList<Problem> All
     {
-        if (problem == null || string.IsNullOrWhiteSpace(problem.Id) || BuiltIns.Any(item =>
-            string.Equals(item.Id, problem.Id, StringComparison.OrdinalIgnoreCase))) return false;
-        BuiltIns.Add(problem);
-        return true;
+        get { lock (Sync) return BuiltIns.ToArray(); }
+    }
+
+    public static bool Register(Problem problem) => RegisterMany(new[] { problem }, out _);
+
+    public static bool RegisterMany(IEnumerable<Problem> problems, out string? error)
+    {
+        error = null;
+        if (problems == null) { error = "Danh sách dạng bài rỗng."; return false; }
+        var incoming = problems.ToList();
+        lock (Sync)
+        {
+            var ids = new HashSet<string>(BuiltIns.Select(problem => problem.Id), StringComparer.OrdinalIgnoreCase);
+            foreach (var problem in incoming)
+            {
+                if (problem == null || string.IsNullOrWhiteSpace(problem.Id))
+                { error = "ID dạng bài rỗng."; return false; }
+                if (!ids.Add(problem.Id))
+                { error = "ID dạng bài bị trùng: " + problem.Id; return false; }
+            }
+            BuiltIns.AddRange(incoming);
+            return true;
+        }
     }
 
     public static Problem? Find(string id)
     {
-        foreach (var p in All)
-            if (p.Id == id) return p;
-        return null;
+        lock (Sync)
+            return BuiltIns.FirstOrDefault(problem => string.Equals(problem.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 }
 
@@ -205,4 +222,16 @@ public interface IOjGenProblemPlugin
 {
     string Name { get; }
     IEnumerable<Problem> CreateProblems();
+}
+
+/// <summary>Optional metadata interface for plugins that declare their OjGen extension API compatibility.</summary>
+public interface IOjGenProblemPluginMetadata
+{
+    int ApiVersion { get; }
+}
+
+public static class ProblemPluginSdk
+{
+    /// <summary>Increment only for a breaking change to IOjGenProblemPlugin or the Problem extension contract.</summary>
+    public const int ApiVersion = 1;
 }

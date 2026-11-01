@@ -12,7 +12,13 @@ public sealed class SolutionMatrixEntry
     public string Role { get; set; } = "";
     public int Compared { get; set; }
     public int Different { get; set; }
+    public int Accepted { get; set; }
+    public int WrongAnswer { get; set; }
+    public int TimeLimitExceeded { get; set; }
+    public int RuntimeError { get; set; }
+    public int Unavailable { get; set; }
     public string DistinguishingTests { get; set; } = "";
+    public string VerdictTests { get; set; } = "";
     public string Status { get; set; } = "";
 }
 public sealed class SolutionMatrixReport
@@ -41,6 +47,7 @@ public static class SolutionMatrixRunner
         string root = Path.GetFullPath(temporaryRoot);
         string runRoot = Path.Combine(root, "matrix-" + Guid.NewGuid().ToString("N"));
         var outputs = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        var statuses = new Dictionary<string, Dictionary<string, RunStatus>>(StringComparer.OrdinalIgnoreCase);
         try
         {
             Directory.CreateDirectory(runRoot);
@@ -70,6 +77,9 @@ public static class SolutionMatrixRunner
                 try { run = SolutionRunner.ProduceOutputs(prepared.Argv, copied, settings, testDir, log, cancellationToken, solutionWorkingDirectory: prepared.WorkingDirectory); }
                 finally { SolutionRunner.Cleanup(prepared); }
                 if (run.Cancelled) { report.Error = "Đã hủy khi chạy ma trận lời giải."; return report; }
+                var byStatus = run.Metrics.ToDictionary(metric => metric.Index, metric => metric.Status);
+                statuses[item.Name] = copied.Select((input, index) => (input, index))
+                    .ToDictionary(pair => Path.GetFileName(pair.input), pair => byStatus.GetValueOrDefault(pair.index + 1, RunStatus.StartFailed), StringComparer.OrdinalIgnoreCase);
                 var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 foreach (string copiedInput in copied)
                 {
@@ -85,11 +95,19 @@ public static class SolutionMatrixRunner
             {
                 var current = outputs[item.Name];
                 var different = new List<string>();
+                var verdictTests = new List<string>();
+                int accepted = 0, wrongAnswer = 0, tle = 0, runtimeError = 0, unavailable = 0;
                 foreach (string input in inputs)
                 {
                     string name = Path.GetFileName(input);
-                    if (!referenceOutputs.TryGetValue(name, out string? expected) || !current.TryGetValue(name, out string? actual) ||
-                        !string.Equals(expected, actual, StringComparison.Ordinal)) different.Add(Path.GetFileNameWithoutExtension(name));
+                    string testName = Path.GetFileNameWithoutExtension(name);
+                    if (!referenceOutputs.TryGetValue(name, out string? expected)) { unavailable++; verdictTests.Add(testName + ": ref-"); continue; }
+                    RunStatus runStatus = statuses[item.Name].GetValueOrDefault(name, RunStatus.StartFailed);
+                    if (runStatus == RunStatus.Timeout) { tle++; different.Add(testName); verdictTests.Add(testName + ": TLE"); continue; }
+                    if (runStatus != RunStatus.Ok || !current.TryGetValue(name, out string? actual))
+                    { runtimeError++; different.Add(testName); verdictTests.Add(testName + ": RE"); continue; }
+                    if (string.Equals(expected, actual, StringComparison.Ordinal)) { accepted++; verdictTests.Add(testName + ": AC"); }
+                    else { wrongAnswer++; different.Add(testName); verdictTests.Add(testName + ": WA"); }
                 }
                 bool isReference = string.Equals(item.Name, reference.Name, StringComparison.OrdinalIgnoreCase);
                 bool caught = different.Count > 0;
@@ -97,7 +115,9 @@ public static class SolutionMatrixRunner
                 {
                     Name = item.Name, Role = isReference ? "Lời giải chuẩn" : item.Role,
                     Compared = inputs.Count, Different = different.Count,
+                    Accepted = accepted, WrongAnswer = wrongAnswer, TimeLimitExceeded = tle, RuntimeError = runtimeError, Unavailable = unavailable,
                     DistinguishingTests = string.Join(", ", different.Take(24)) + (different.Count > 24 ? $" … +{different.Count - 24}" : ""),
+                    VerdictTests = string.Join(", ", verdictTests),
                     Status = isReference ? "Mốc so sánh" : item.Role == "Lời giải sai" ? (caught ? "Bị bộ test bắt" : "Chưa bị bộ test bắt") : (caught ? "Khác lời giải chuẩn" : "Khớp lời giải chuẩn"),
                 });
             }

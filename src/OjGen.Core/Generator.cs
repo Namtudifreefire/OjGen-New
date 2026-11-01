@@ -60,14 +60,11 @@ public static class Generator
         error = null;
         try
         {
-            string temp = path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(checkpoint), new UTF8Encoding(false));
-            File.Move(temp, path, overwrite: true);
+            AtomicFile.WriteAllText(path, JsonSerializer.Serialize(checkpoint), new UTF8Encoding(false));
             return true;
         }
         catch (Exception ex)
         {
-            try { File.Delete(path + ".tmp"); } catch (Exception) { }
             error = "Không lưu được checkpoint sinh test: " + ex.Message;
             return false;
         }

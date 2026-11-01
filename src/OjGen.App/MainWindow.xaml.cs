@@ -273,6 +273,104 @@ public partial class MainWindow : Window
         SaveProjectSnapshot(dialog.FileName, quiet: false);
     }
 
+    private void MnuSavePreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (_model == null) return;
+        bool hasFixedSeed = Util.ParseULL(txtSeed.Text, out ulong fixedSeed);
+        if (!string.IsNullOrWhiteSpace(txtSeed.Text) && !hasFixedSeed)
+        {
+            MessageBox.Show(this, "Seed cần là số nguyên không âm hoặc để trống để dùng seed ngẫu nhiên.", "Seed không hợp lệ", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        Directory.CreateDirectory(AuthoringPresetStore.DefaultDirectory);
+        var dialog = new SaveFileDialog
+        {
+            Title = "Lưu preset cấu hình ra đề",
+            Filter = "OjGen preset (*.ojpreset.json)|*.ojpreset.json",
+            DefaultExt = ".ojpreset.json", AddExtension = true,
+            FileName = (_problemCode.Length > 0 ? _problemCode : _model.Problem.Id) + ".ojpreset.json",
+            InitialDirectory = AuthoringPresetStore.DefaultDirectory,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var preset = new AuthoringPreset
+            {
+                Name = Path.GetFileName(dialog.FileName).Replace(".ojpreset.json", "", StringComparison.OrdinalIgnoreCase),
+                ProblemId = _model.Problem.Id, ProblemName = _problemName, ProblemCode = _problemCode,
+                ReferenceSolution = txtSolution.Text.Trim(),
+                TestCount = _testGroups.Count > 0 ? _testGroups.Sum(group => group.TestCount) :
+                    (Util.ParseLL(txtTests.Text, out long parsedTests) && parsedTests is > 0 and <= Generator.MaxTests ? (int)parsedTests : 10),
+                SeedPolicy = hasFixedSeed ? "Fixed" : "Random", Seed = hasFixedSeed ? fixedSeed : null,
+                TestPlan = TestPlanProfile.From(_model.Problem, _testGroups, _requiredCoverageTags),
+                RequiredCoverageTags = _requiredCoverageTags.ToList(), Ints = new(_model.Effective().Ints), Texts = new(_model.Effective().Texts),
+                ValidatorPath = _projectPackage.ValidatorPath, CheckerPath = _projectPackage.CheckerPath,
+                CheckerArguments = _projectPackage.CheckerArguments, CheckerTimeoutMs = _projectPackage.CheckerTimeoutMs,
+                ContractSuitePath = _projectPackage.ContractSuitePath, CandidateSolution = _projectPackage.CandidateSolution,
+            };
+            preset.Save(dialog.FileName);
+            MessageBox.Show(this, "Đã lưu preset:\n" + dialog.FileName, "Preset ra đề", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { MessageBox.Show(this, "Không lưu được preset: " + ex.Message, "Lỗi preset", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+
+    private void MnuOpenPreset_Click(object sender, RoutedEventArgs e)
+    {
+        Directory.CreateDirectory(AuthoringPresetStore.DefaultDirectory);
+        var dialog = new OpenFileDialog
+        {
+            Title = "Chọn preset ra đề", Filter = "OjGen preset (*.ojpreset.json)|*.ojpreset.json|JSON (*.json)|*.json",
+            CheckFileExists = true, InitialDirectory = AuthoringPresetStore.DefaultDirectory,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var preset = AuthoringPreset.Load(dialog.FileName);
+            Problem problem = Problems.Find(preset.ProblemId) ?? throw new InvalidDataException("Không tìm thấy dạng bài trong OjGen hiện tại: " + preset.ProblemId);
+            Config config = problem.DefaultConfig();
+            foreach (var parameter in problem.Params)
+            {
+                if (parameter.Type == ParamType.Text && preset.Texts.TryGetValue(parameter.Key, out string? text)) config.SetText(parameter.Key, text);
+                else if (parameter.Type != ParamType.Text && preset.Ints.TryGetValue(parameter.Key, out long value)) config.Set(parameter.Key, value);
+            }
+            if (Generator.ValidateFullConfig(problem, config) is { } configError) throw new InvalidDataException("Cấu hình preset không hợp lệ: " + configError);
+            var groups = preset.TestPlan.Groups.Count > 0 ? preset.TestPlan.ToGroups(problem) : new List<TestGroupSpec>();
+            _loading = true;
+            cmbAlgorithmTopic.SelectedItem = null;
+            cmbMainCategory.SelectedItem = problem.MainCategory;
+            SetSubtypeOptions(problem.MainCategory, problem.Id);
+            SetProblemModel(problem, config);
+            _loading = false;
+            _problemName = preset.ProblemName;
+            _problemCode = preset.ProblemCode;
+            _testGroups = groups;
+            _requiredCoverageTags = preset.RequiredCoverageTags.ToList();
+            _manualTests.Clear();
+            _authoringDocument = null;
+            txtTests.Text = (groups.Count > 0 ? groups.Sum(group => group.TestCount) : preset.TestCount).ToString();
+            txtTests.IsEnabled = groups.Count == 0;
+            paramHost.IsEnabled = groups.Count == 0;
+            txtSeed.Text = preset.SeedPolicy == "Fixed" && preset.Seed.HasValue ? Util.LL(preset.Seed.Value) : "";
+            _projectPackage = new ProjectPackageOptions
+            {
+                ValidatorPath = preset.ValidatorPath, CheckerPath = preset.CheckerPath, CheckerArguments = preset.CheckerArguments,
+                CheckerTimeoutMs = preset.CheckerTimeoutMs, ContractSuitePath = preset.ContractSuitePath, CandidateSolution = preset.CandidateSolution,
+            };
+            if (preset.ReferenceSolution.Length > 0) txtSolution.Text = preset.ReferenceSolution;
+            lblSetupSummary.Text = $"Bài: {_problemName} · mã {_problemCode} · khuôn {problem.Title}";
+            lblGroupPlan.Text = groups.Count == 0 ? "Một cấu hình chung cho toàn bộ test." :
+                $"{groups.Count} nhóm · {groups.Sum(group => group.TestCount)} test: " + string.Join(", ", groups.Select(group => $"{group.Name} ({group.TestCount})"));
+            lblManualTests.Text = "Chưa có test nhập tay.";
+            OnFormChanged();
+            _log.Line("Đã áp dụng preset ra đề: " + preset.Name);
+        }
+        catch (Exception ex)
+        {
+            _loading = false;
+            MessageBox.Show(this, "Không áp dụng được preset: " + ex.Message, "Lỗi preset", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void MnuOpenProject_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Title = "Mở dự án soạn đề", Filter = "OjGen project (*.ojproject)|*.ojproject|All files (*.*)|*.*", CheckFileExists = true };
@@ -1170,7 +1268,7 @@ public partial class MainWindow : Window
     {
         var dlg = new SaveFileDialog { Title = "Lưu nhật ký", Filter = "Văn bản (*.txt)|*.txt", FileName = "ojgen_log.txt" };
         if (dlg.ShowDialog(this) != true) return;
-        try { File.WriteAllText(dlg.FileName, txtLog.Text, new UTF8Encoding(false)); }
+        try { AtomicFile.WriteAllText(dlg.FileName, txtLog.Text, new UTF8Encoding(false)); }
         catch (Exception ex) { MessageBox.Show(this, "Không lưu được: " + ex.Message); }
     }
 

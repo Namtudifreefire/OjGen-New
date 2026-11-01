@@ -59,9 +59,7 @@ internal static class JobQueuePersistence
         }
         string full = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        string temp = full + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
-        File.Move(temp, full, true);
+        AtomicFile.WriteAllText(full, JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
     }
 
     public static List<QueuedJobEntry> Load(string path)

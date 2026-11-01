@@ -202,6 +202,9 @@ public static class JobPlanner
     }
 
     /// <summary>Thư mục đã có file test (hoặc .zip cùng tên) - dùng để hỏi xác nhận trước khi ghi đè.</summary>
-    public static bool OutDirHasData(string outDir) =>
-        FileManager.CountTestFiles(outDir) > 0 || File.Exists(outDir.TrimEnd('/', '\\') + ".zip");
+    public static bool OutDirHasData(string outDir)
+    {
+        try { return FileManager.CountTestFiles(outDir) > 0 || File.Exists(outDir.TrimEnd('/', '\\') + ".zip"); }
+        catch (Exception) { return true; } // Unknown state must be treated as occupied to avoid overwriting data.
+    }
 }

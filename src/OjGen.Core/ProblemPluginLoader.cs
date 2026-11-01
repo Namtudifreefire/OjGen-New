@@ -75,16 +75,27 @@ public static class ProblemPluginLoader
                     if (File.Exists(full)) messages.Add(Path.GetFileName(assemblyPath) + ": không có IOjGenProblemPlugin public.");
                     continue;
                 }
+                var pluginDescriptions = new List<(string Name, int ProblemCount)>();
+                var contributedProblems = new List<Problem>();
                 foreach (Type type in pluginTypes)
                 {
                     var plugin = (IOjGenProblemPlugin)Activator.CreateInstance(type)!;
-                    int added = 0;
-                    foreach (Problem problem in plugin.CreateProblems())
+                    if (plugin is IOjGenProblemPluginMetadata metadata)
                     {
-                        if (!Problems.Register(problem)) throw new InvalidDataException("ID dạng bài rỗng hoặc trùng: " + problem?.Id);
-                        added++;
+                        if (metadata.ApiVersion != ProblemPluginSdk.ApiVersion)
+                            throw new InvalidDataException($"Plugin {plugin.Name} dùng API {metadata.ApiVersion}; OjGen hỗ trợ API {ProblemPluginSdk.ApiVersion}.");
                     }
-                    messages.Add($"Plugin {plugin.Name}: đã nạp {added} dạng bài.");
+                    else messages.Add($"Plugin {plugin.Name}: chưa khai báo IOjGenProblemPluginMetadata; đang dùng chế độ tương thích API cũ.");
+                    var problems = plugin.CreateProblems()?.ToList()
+                        ?? throw new InvalidDataException($"Plugin {plugin.Name} trả về danh sách dạng bài rỗng.");
+                    contributedProblems.AddRange(problems);
+                    pluginDescriptions.Add((plugin.Name, problems.Count));
+                }
+                if (!Problems.RegisterMany(contributedProblems, out string? registrationError))
+                    throw new InvalidDataException(registrationError ?? "Không đăng ký được dạng bài từ plugin.");
+                foreach (var plugin in pluginDescriptions)
+                {
+                    messages.Add($"Plugin {plugin.Name}: đã nạp {plugin.ProblemCount} dạng bài.");
                     loadedPlugins++;
                 }
             }

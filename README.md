@@ -28,9 +28,15 @@ OJGEN 3.3.0 bổ sung workspace `.ojproject`, tiếp tục cả pipeline tạo t
 - **Nhãn độ phủ:** Gắn nhãn như `small`, `boundary`, `stress` hoặc `adversarial` cho từng nhóm; đặt nhãn bắt buộc để audit cảnh báo nhóm còn thiếu.
 - **Soạn đề và xem trước:** Viết mô tả, định dạng input/output, ràng buộc và ví dụ; xem trước HTML với tiêu đề, danh sách, bảng, liên kết, ảnh HTTPS và một tập công thức TeX cơ bản; lưu bản nháp Markdown/JSON, giữ nguyên văn bản đa ngôn ngữ và kiểm tra nhất quán với cấu hình bài, test mẫu.
 - **Dự án soạn đề:** Lưu/mở `.ojproject` gồm cấu hình, kế hoạch nhóm, test tay/sample, statement, đường dẫn lời giải/test và lựa chọn audit; OjGen autosave và có thể khôi phục phiên làm việc.
+- **Preset và thư viện đề:** Lưu cấu hình, nhóm test, seed, nhãn độ phủ và checker vào `.ojpreset.json`; CLI tìm project/bản nháp trong thư viện cục bộ và nhân bản project mà không giữ lại lịch sử test cũ.
+- **Workspace contest:** Lưu danh sách nhiều `.ojproject`, thứ tự bài, thời lượng và mã bài trong JSON; CLI kiểm tra mã/thứ tự trùng, project bị thiếu và khuôn generator không hợp lệ.
+- **So sánh phiên bản đề:** So sánh file hoặc hai thư mục project/release, liệt kê phần thêm, xóa, sửa và cảnh báo khi đổi test/kế hoạch/tham số có thể ảnh hưởng khả năng tái lập seed.
+- **Quản lý tài nguyên statement:** Rà liên kết Markdown/HTML tới ảnh và tệp cục bộ, báo file thiếu, đường dẫn ra ngoài project và URL ngoài chưa kiểm tra được khi offline.
+- **Quản lý bản dịch:** Liên kết draft theo locale, kiểm tra các mục còn trống, giới hạn thời gian/bộ nhớ và input/output trong code block mẫu; cảnh báo khi dãy số giới hạn khác bản gốc.
+- **CI headless:** `ojgen --ci-project problem.ojproject --json-report audit.json` chạy audit từ dự án GUI, chép test vào thư mục tạm và trả exit code rõ ràng cho CI.
 - **Ca hợp đồng validator/checker:** Khai báo input/output cần được chấp nhận hoặc từ chối trong `.ojcontract.json`; GUI tạo file mẫu, audit chạy các ca trên validator/checker đã chọn.
 - **Đóng gói bài:** Xuất statement Markdown/HTML, hồ sơ `.ojproblem.json`, test, ví dụ và tùy chọn lời giải chuẩn, validator, checker thành thư mục hoặc ZIP.
-- **Xuất Kattis Problem Package:** Tạo gói theo định dạng 2025-09 release candidate, kèm test sample/secret, metadata, lời giải và validator. Định dạng này chưa được hỗ trợ rộng; hãy kiểm tra judge đích trước khi nhập.
+- **Xuất Kattis Problem Package:** Tạo gói theo định dạng 2025-09 release candidate, kèm test sample/secret, metadata, lời giải và validator. Upstream vẫn đánh dấu `2025-09` là release candidate, còn `legacy`/`legacy-icpc` là stable hiện hành; hãy kiểm tra judge đích trước khi nhập ([PPF versions](https://icpc.io/problem-package-format/), [changelog](https://icpc.io/problem-package-format/spec/changelog.html)).
 - **Kiểm định trước phát hành:** Trước khi đóng gói, OjGen rà cấu trúc đề, định dạng input, đủ output, test trùng, độ phủ nhỏ/biên/stress, SHA-256 và khả năng tái lập input với cùng seed; lỗi chặn đóng gói, cảnh báo cần được xác nhận. Nếu chọn validator, OjGen chạy trên mọi input hợp lệ và một số input sai; có thể thêm lời giải độc lập để đối chiếu trên 100 test nhỏ. Checker chạy trên từng input/output chính thức theo mẫu đối số có thể cấu hình và timeout.
 - **Kiểm tra package thực tế:** Kiểm tra metadata, cặp test, thư mục định dạng và checksum trong thư mục gói OjGen/Kattis trước khi tạo ZIP; package kèm inventory CSV và provenance JSON có SHA-256 từng test.
 - **Đồ thị có ràng buộc:** Sinh đồ thị liên thông, liên thông mạnh, đơn, có trọng số, DAG và hai phía; chọn mật độ thưa/vừa/dày hoặc tự đặt minM/maxM. Validator từ chối cấu hình bất khả thi, chu trình DAG hoặc cạnh cùng phía.
@@ -40,14 +46,15 @@ OJGEN 3.3.0 bổ sung workspace `.ojproject`, tiếp tục cả pipeline tạo t
 - **Tạo lại output:** Chạy lại lời giải trên bộ test có sẵn.
 - **Nhật ký và tiến độ:** Theo dõi quá trình chạy, xem thông báo và hủy tác vụ trong GUI.
 - **Kiểm kê và trực quan hóa test:** Lọc theo tên/nhóm/nhãn, xem kích thước, min/max số, test trùng và output thiếu; đổi tên hoặc nhóm hàng loạt, xuất CSV, vẽ đồ thị/cây, lưới và phân phối số.
-- **So sánh ma trận lời giải:** Chạy nhiều lời giải trên cùng test, chọn lời giải chuẩn, gắn nhãn lời giải đúng/sai và xem test phân biệt. So sánh token sau chuẩn hóa khoảng trắng; bài nhiều đáp án cần checker riêng.
+- **So sánh ma trận lời giải:** Chạy nhiều lời giải trên cùng test, chọn lời giải chuẩn, gắn nhãn lời giải đúng/sai và xem AC/WA/TLE/RE theo từng test. So sánh token sau chuẩn hóa khoảng trắng; bài nhiều đáp án cần checker riêng.
 - **Kiểm tra lại test cũ:** Xác thực input theo khuôn và chạy checker trên output hiện có mà không sinh lại input hoặc output.
 - **Benchmark theo nhóm:** Báo median, p95 và working set đỉnh tổng thể/theo nhóm; `ojgen_info.txt` ghi hệ điều hành, runtime, kiến trúc và số CPU logic để đọc kết quả đúng bối cảnh.
 - **Runner nhiều file:** Tạo `.ojrun.json` để đặt lệnh build/run và working directory không qua shell; ví dụ C++ nhiều file ở [examples/multi-file.ojrun.json](examples/multi-file.ojrun.json). Placeholder gồm `{sourceDir}`, `{workDir}`, `{exe}`.
 - **Hỗ trợ nhiều ngôn ngữ:** Chạy C/C++, Python, Java source launcher, Kotlin, Pascal, C# đơn file, Rust, Go, run profile và chương trình đã biên dịch; compiler/runtime cần được cài trên máy.
 - **Tiếp tục toàn bộ pipeline:** GUI và CLI `--resume` kiểm tra checkpoint/fingerprint rồi bỏ qua input và output đã có hash đúng; đổi seed, cấu hình hoặc lời giải sẽ khiến output được chạy lại.
-- **Nhập và so sánh bộ test:** Nạp `.in`/`.inp` và `.ans`/`.out` từ thư mục hoặc ZIP, sau đó so sánh tên và nội dung hai bộ.
+- **Nhập/xuất test-data OJ:** Nạp `.in`/`.inp` và `.ans`/`.out` từ thư mục hoặc ZIP; xuất quy ước test-data trung gian cho Polygon/Testlib, DOMjudge, DMOJ hoặc OjGen. Gói này không chuyển statement, scoring, validator/checker hay metadata đầy đủ của judge.
 - **Plugin generator:** Nạp DLL có lớp triển khai `IOjGenProblemPlugin` và trả về các lớp con `Problem`; CLI dùng `--plugin PATH`, GUI tự dò thư mục `plugins`.
+- **Plugin SDK có phiên bản:** Plugin có thể khai báo `ProblemPluginSdk.ApiVersion`; `ojgen --plugin-check DLL_OR_DIR` kiểm tra tương thích trước khi cấu hình sử dụng.
 - **Viết plugin:** Hướng dẫn tạo DLL, triển khai interface và đặt plugin có trong [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
 - **Hàng đợi GUI:** Tự lưu và khôi phục qua lần mở app; đổi thứ tự, seed, thư mục output, kế hoạch nhóm, xóa mục và giữ mục lỗi để sửa/chạy lại.
 - **JSON và shell completion:** `--json-report FILE` ghi báo cáo máy đọc được; `--completion bash|powershell` tạo gợi ý lệnh.
@@ -211,6 +218,14 @@ Nhập test từ thư mục hoặc ZIP rồi so sánh hai bộ:
 ```bash
 ojgen --import-tests old-tests.zip --out imported-tests
 ojgen --compare-package imported-tests new-tests
+ojgen --export-tests imported-tests --format dmoj --out dmoj-testdata.zip
+ojgen --preset-save "graph stress" --problem graph --tests 80 --seed 2026 --connected 1 --weighted 1
+ojgen --preset-list
+ojgen --library ./problems --library-search graph
+ojgen --compare-problem ./release-a --against ./release-b
+ojgen --check-resources problem.ojdraft.json
+ojgen --check-translations translations.ojtranslation.json
+ojgen --ci-project problem.ojproject --json-report audit.json
 ```
 
 Tạo báo cáo cho script và gợi ý tham số shell:

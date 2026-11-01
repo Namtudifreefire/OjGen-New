@@ -47,8 +47,8 @@ public partial class ScaffoldWindow : Window
             return;
         try
         {
-            File.WriteAllText(dialog.FileName, template.Source, new UTF8Encoding(false));
-            File.WriteAllText(readme, template.Readme + Environment.NewLine, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(dialog.FileName, template.Source, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(readme, template.Readme + Environment.NewLine, new UTF8Encoding(false));
             MessageBox.Show(this, "Đã lưu khung mã và README. Hoàn thành TODO trước khi dùng validator/checker.", "OjGen", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

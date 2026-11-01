@@ -19,10 +19,13 @@ public sealed class PackageDiffResult
     public bool Same => Added.Count == 0 && Removed.Count == 0 && Changed.Count == 0;
 }
 
+public sealed record TestExportResult(string ArchivePath, string Format, int TestCount);
+
 /// <summary>Import and content-address comparison helpers for test folders and OJ archives.</summary>
 public static class TestPackageTools
 {
     private const int MaxTests = 10000;
+    private const int MaxScannedEntries = 50000;
     private const long MaxTotalBytes = 2L * 1024 * 1024 * 1024;
     private static readonly HashSet<string> InputExtensions = new(StringComparer.OrdinalIgnoreCase) { ".inp", ".in" };
     private static readonly HashSet<string> OutputExtensions = new(StringComparer.OrdinalIgnoreCase) { ".out", ".ans" };
@@ -65,11 +68,16 @@ public static class TestPackageTools
         if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
         {
             using var archive = ZipFile.OpenRead(path);
+            if (archive.Entries.Count > MaxScannedEntries)
+                throw new InvalidDataException($"Gói test có quá {MaxScannedEntries} mục; dừng quét để tránh dùng quá nhiều tài nguyên.");
+            int testFiles = 0;
             foreach (var entry in archive.Entries)
             {
                 if (entry.FullName.EndsWith('/')) continue;
                 string ext = Path.GetExtension(entry.FullName);
                 if (!InputExtensions.Contains(ext) && !OutputExtensions.Contains(ext)) continue;
+                if (++testFiles > MaxTests * 2)
+                    throw new InvalidDataException($"Gói test vượt giới hạn {MaxTests} bộ input/output.");
                 string key = CanonicalTestKey(entry.FullName, InputExtensions.Contains(ext));
                 if (!result.TryAdd(key, "zip:" + path + "|" + entry.FullName))
                     throw new InvalidDataException("Có tên test trùng nhau trong gói: " + key);
@@ -77,12 +85,30 @@ public static class TestPackageTools
         }
         else if (Directory.Exists(path))
         {
-            foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            var pending = new Stack<string>();
+            pending.Push(path);
+            int scannedEntries = 0, testFiles = 0;
+            while (pending.Count > 0)
             {
-                string ext = Path.GetExtension(file);
-                if (!InputExtensions.Contains(ext) && !OutputExtensions.Contains(ext)) continue;
-                string key = CanonicalTestKey(Path.GetRelativePath(path, file), InputExtensions.Contains(ext));
-                if (!result.TryAdd(key, file)) throw new InvalidDataException("Có tên test trùng nhau sau khi rút gọn thư mục: " + key);
+                string directory = pending.Pop();
+                foreach (string entryPath in Directory.EnumerateFileSystemEntries(directory))
+                {
+                    if (++scannedEntries > MaxScannedEntries)
+                        throw new InvalidDataException($"Thư mục có quá {MaxScannedEntries} mục; dừng quét để tránh dùng quá nhiều tài nguyên.");
+                    FileAttributes attributes = File.GetAttributes(entryPath);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    if ((attributes & FileAttributes.Directory) != 0)
+                    {
+                        pending.Push(entryPath);
+                        continue;
+                    }
+                    string ext = Path.GetExtension(entryPath);
+                    if (!InputExtensions.Contains(ext) && !OutputExtensions.Contains(ext)) continue;
+                    if (++testFiles > MaxTests * 2)
+                        throw new InvalidDataException($"Thư mục vượt giới hạn {MaxTests} bộ input/output.");
+                    string key = CanonicalTestKey(Path.GetRelativePath(path, entryPath), InputExtensions.Contains(ext));
+                    if (!result.TryAdd(key, entryPath)) throw new InvalidDataException("Có tên test trùng nhau sau khi rút gọn thư mục: " + key);
+                }
             }
         }
         else throw new FileNotFoundException("Không tìm thấy thư mục hoặc ZIP test.", path);
@@ -112,28 +138,58 @@ public static class TestPackageTools
             if (totalBytes > MaxTotalBytes) throw new InvalidDataException("Tổng dữ liệu test vượt giới hạn import 2 GiB.");
         }
         string dest = Path.GetFullPath(destination);
+        if (File.Exists(dest)) throw new IOException("Đường dẫn đích đang là một file.");
         if (Directory.Exists(dest) && Directory.EnumerateFileSystemEntries(dest).Any())
             throw new IOException("Thư mục đích phải mới hoặc đang rỗng; không ghi đè test hiện có.");
-        Directory.CreateDirectory(dest);
+        string parent = Path.GetDirectoryName(dest)!;
+        Directory.CreateDirectory(parent);
+        string staging = Path.Combine(parent, $".{Path.GetFileName(dest)}.ojgen-import-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(staging);
         int width = FileManager.TestNumberWidth(inputs.Count), outCount = 0;
         var warnings = new List<string>();
-        using var zip = File.Exists(source) && source.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ZipFile.OpenRead(source) : null;
-        for (int inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
+        try
         {
-            var input = inputs[inputIndex];
-            int index = inputIndex + 1;
-            string name = FileManager.TestName(prefix, index, width);
-            CopyItem(input.Value, Path.Combine(dest, name + ".inp"), zip);
-            string outKey = input.Key[..^4] + ".out";
-            if (items.TryGetValue(outKey, out string? output))
+            using var zip = File.Exists(source) && source.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ZipFile.OpenRead(source) : null;
+            for (int inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
             {
-                CopyItem(output, Path.Combine(dest, name + ".out"), zip);
-                outCount++;
+                var input = inputs[inputIndex];
+                int index = inputIndex + 1;
+                string name = FileManager.TestName(prefix, index, width);
+                CopyItem(input.Value, Path.Combine(staging, name + ".inp"), zip);
+                string outKey = input.Key[..^4] + ".out";
+                if (items.TryGetValue(outKey, out string? output))
+                {
+                    CopyItem(output, Path.Combine(staging, name + ".out"), zip);
+                    outCount++;
+                }
+                else warnings.Add($"Test nguồn '{Stem(input.Key)}' chưa có output .out/.ans.");
             }
-            else warnings.Add($"Test nguồn '{Stem(input.Key)}' chưa có output .out/.ans.");
+            if (!FileManager.WriteTestChecksumManifest(staging, out _, out string? checksumError))
+                throw new IOException(checksumError ?? "Không tạo được manifest SHA-256.");
+
+            string? emptyDestinationBackup = null;
+            if (Directory.Exists(dest))
+            {
+                emptyDestinationBackup = dest + ".ojgen-empty-" + Guid.NewGuid().ToString("N");
+                Directory.Move(dest, emptyDestinationBackup);
+            }
+            try { Directory.Move(staging, dest); }
+            catch
+            {
+                if (emptyDestinationBackup != null && !Directory.Exists(dest))
+                    Directory.Move(emptyDestinationBackup, dest);
+                throw;
+            }
+            if (emptyDestinationBackup != null)
+            {
+                try { Directory.Delete(emptyDestinationBackup); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
         }
-        if (!FileManager.WriteTestChecksumManifest(dest, out _, out string? checksumError))
-            throw new IOException(checksumError ?? "Không tạo được manifest SHA-256.");
+        catch
+        {
+            try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            throw;
+        }
         return new TestImportResult { Inputs = inputs.Count, Outputs = outCount, Warnings = warnings };
     }
 
@@ -170,6 +226,92 @@ public static class TestPackageTools
             else changed.Add(key);
         }
         return new PackageDiffResult { Identical = identical, Added = added, Removed = removed, Changed = changed };
+    }
+
+    /// <summary>
+    /// Exports test data using common OJ directory/extension conventions. This is an interchange archive,
+    /// not a full native problem package: statements, validators, scoring and judge-specific settings are omitted.
+    /// </summary>
+    public static TestExportResult ExportTestData(string sourceDirectory, string destinationZip, string format)
+    {
+        string source = Path.GetFullPath(sourceDirectory);
+        if (!Directory.Exists(source)) throw new DirectoryNotFoundException("Không tìm thấy thư mục test nguồn.");
+        string destination = Path.GetFullPath(destinationZip);
+        if (!destination.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("File xuất phải có phần mở rộng .zip.");
+        if (File.Exists(destination) || Directory.Exists(destination)) throw new IOException("File ZIP đích đã tồn tại.");
+        string normalized = format.Trim().ToLowerInvariant();
+        if (normalized is not ("ojgen" or "polygon" or "testlib" or "domjudge" or "dmoj"))
+            throw new InvalidDataException("Định dạng phải là ojgen, polygon, testlib, domjudge hoặc dmoj.");
+
+        var items = ListTests(source);
+        var inputs = items.Where(pair => pair.Key.EndsWith(".inp", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase).ToList();
+        if (inputs.Count == 0) throw new InvalidDataException("Không tìm thấy input test trong thư mục nguồn.");
+        foreach (var input in inputs)
+            if (!items.ContainsKey(input.Key[..^4] + ".out")) throw new InvalidDataException("Thiếu output cho test " + input.Key[..^4] + ".");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        string temporary = Path.Combine(Path.GetDirectoryName(destination)!, $".{Path.GetFileName(destination)}.ojgen-export-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            WriteExportArchive(temporary, normalized, inputs, items);
+            File.Move(temporary, destination, overwrite: false);
+        }
+        catch
+        {
+            try { if (File.Exists(temporary)) File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            throw;
+        }
+        return new TestExportResult(destination, normalized, inputs.Count);
+    }
+
+    private static void WriteExportArchive(string path, string format,
+        IReadOnlyList<KeyValuePair<string, string>> inputs, Dictionary<string, string> items)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        using var yaml = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
+        if (format == "dmoj") yaml.WriteLine("test_cases:");
+        int width = Math.Max(3, inputs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
+        for (int i = 0; i < inputs.Count; i++)
+        {
+            var input = inputs[i];
+            string stem = (i + 1).ToString("D" + width, System.Globalization.CultureInfo.InvariantCulture);
+            bool sample = input.Key.StartsWith("sample/", StringComparison.OrdinalIgnoreCase);
+            string inputName, outputName;
+            switch (format)
+            {
+                case "ojgen": inputName = "tests/test" + stem + ".inp"; outputName = "tests/test" + stem + ".out"; break;
+                case "domjudge": string group = sample ? "sample" : "secret"; inputName = $"data/{group}/test{stem}.in"; outputName = $"data/{group}/test{stem}.ans"; break;
+                case "dmoj": inputName = "testdata/test" + stem + ".in"; outputName = "testdata/test" + stem + ".out"; yaml.WriteLine($"- {{in: {inputName}, points: 1}}"); break;
+                default: inputName = "tests/test" + stem + ".in"; outputName = "tests/test" + stem + ".ans"; break;
+            }
+            AddArchiveFile(archive, input.Value, inputName);
+            AddArchiveFile(archive, items[input.Key[..^4] + ".out"], outputName);
+        }
+        if (format == "dmoj")
+        {
+            var entry = archive.CreateEntry("init.yml", CompressionLevel.Optimal);
+            using var writer = new StreamWriter(entry.Open(), new System.Text.UTF8Encoding(false));
+            writer.Write(yaml.ToString());
+        }
+        string note = format switch
+        {
+            "domjudge" => "Test-data-only interchange. Files use data/secret/*.in and *.ans. Add statement, problem.yaml, validator and accepted solution in the target judge's required format.",
+            "dmoj" => "Test-data-only interchange. init.yml references input files and outputs use matching .out names. Add statement and judge-specific metadata before importing.",
+            "polygon" or "testlib" => "Test-data-only interchange using tests/*.in and tests/*.ans. This is not a native Polygon export; review test names and configure generators, validators, checker and statements in Polygon.",
+            _ => "OjGen test data archive (.inp/.out).",
+        };
+        var noteEntry = archive.CreateEntry("OJGEN-INTEROP.txt", CompressionLevel.Optimal);
+        using (var writer = new StreamWriter(noteEntry.Open(), new System.Text.UTF8Encoding(false))) writer.WriteLine(note);
+    }
+
+    private static void AddArchiveFile(ZipArchive archive, string source, string entryName)
+    {
+        string targetName = entryName.Replace('\\', '/');
+        var entry = archive.CreateEntry(targetName, CompressionLevel.Optimal);
+        using var input = File.OpenRead(source);
+        using var output = entry.Open();
+        input.CopyTo(output);
     }
 
     private static string HashItem(string path)

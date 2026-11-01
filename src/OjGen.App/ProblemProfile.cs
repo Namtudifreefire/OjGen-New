@@ -55,5 +55,5 @@ internal sealed class ProblemProfileFile
         return profile;
     }
 
-    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+    public void Save(string path) => AtomicFile.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
 }

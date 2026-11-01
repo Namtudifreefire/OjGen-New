@@ -33,6 +33,18 @@ internal static class CliApp
         s.Append("  ojgen --completion <bash|powershell>  Tạo gợi ý lệnh cho shell\n");
         s.Append("  ojgen --problem <dạng> --audit ...  Kiểm định phát hành, ghi báo cáo và chỉ ZIP khi đạt\n");
         s.Append("  ojgen --audit-dir <thư mục> --problem <dạng>  Kiểm định/đóng gói test có sẵn\n");
+        s.Append("  ojgen --ci-project <file.ojproject> [--json-report report.json]  Kiểm định headless, không sửa thư mục nguồn\n");
+        s.Append("  ojgen --preset-save <tên> --problem <dạng> [--plan FILE]  Lưu preset ra đề; --preset FILE để dùng\n");
+        s.Append("  ojgen --preset-list [--preset-dir DIR]  Liệt kê preset đã lưu\n");
+        s.Append("  ojgen --library DIR [--library-search QUERY] [--library-tag TAG]  Tìm/lọc đề theo nhãn nhóm test\n");
+        s.Append("  ojgen --library-clone FILE --out FILE.ojproject  Nhân bản project để bắt đầu một đề mới\n");
+        s.Append("  ojgen --contest contest.ojcontest.json  Kiểm tra workspace nhiều bài và đường dẫn project\n");
+        s.Append("  ojgen --contest contest.ojcontest.json --contest-export contest.zip  Gộp package các bài thành một ZIP contest\n");
+        s.Append("  ojgen --compare-problem A --against B  So sánh hai bản đề/project/thư mục\n");
+        s.Append("  ojgen --check-resources statement.ojdraft.json  Tìm ảnh/link local bị hỏng hoặc không an toàn\n");
+        s.Append("  ojgen --check-translations translations.ojtranslation.json  Kiểm tra bản dịch, ví dụ và giới hạn\n");
+        s.Append("  ojgen --export-tests DIR --format <ojgen|polygon|domjudge|dmoj> --out FILE.zip  Xuất test-data interchange\n");
+        s.Append("  ojgen --plugin-check DLL_OR_DIR  Kiểm tra plugin/API trước khi dùng (plugin được nạp trong process)\n");
         s.Append("  ojgen --selftest                   Tự kiểm tra các module và bộ tạo ZIP\n");
         s.Append("  ojgen --help | --version\n\n");
         s.Append("TÙY CHỌN KHI SINH TEST\n");
@@ -105,6 +117,11 @@ internal static class CliApp
         "--audit", "--audit-dir", "--validator", "--checker", "--checker-args", "--checker-timeout",
         "--compare-solution", "--statement", "--contract-suite", "--allow-audit-warnings", "--zip-dir", "--regen-out",
         "--import-tests", "--compare-package", "--against", "--completion", "--plugin", "--selftest",
+        "--preset", "--preset-save", "--preset-list", "--preset-dir", "--ci-project", "--library", "--library-search",
+        "--contest", "--compare-problem", "--check-resources", "--check-translations", "--format-info", "--export-tests", "--format", "--library-tag",
+        "--library-clone",
+        "--plugin-check",
+        "--contest-export",
     };
 
     private static string CompletionText(string shell)
@@ -127,7 +144,7 @@ internal static class CliApp
         {
             string full = Path.GetFullPath(path);
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            File.WriteAllText(full, System.Text.Json.JsonSerializer.Serialize(payload,
+            AtomicFile.WriteAllText(full, System.Text.Json.JsonSerializer.Serialize(payload,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
             return true;
         }
@@ -272,7 +289,7 @@ internal static class CliApp
     private static readonly HashSet<string> FlagOnly = new()
     {
         "help", "h", "list", "topics", "version", "selftest", "force", "no-zip", "zip", "zip-incomplete", "rebuild", "no-compress",
-        "audit", "allow-audit-warnings", "resume",
+        "audit", "allow-audit-warnings", "resume", "preset-list",
     };
 
     private static readonly HashSet<string> GlobalKeys = new()
@@ -281,6 +298,11 @@ internal static class CliApp
         "prefix", "info", "regen-out", "zip-dir", "python", "settings", "topic", "topic-source",
         "audit-dir", "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "contract-suite", "profile", "plan", "coverage-required",
         "completion", "import-tests", "compare-package", "against", "json-report", "plugin",
+        "preset", "preset-save", "preset-dir", "ci-project", "library", "library-search", "contest", "compare-problem",
+        "check-resources", "check-translations", "format-info", "export-tests", "format",
+        "library-clone", "library-tag",
+        "plugin-check",
+        "contest-export",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -369,6 +391,213 @@ internal static class CliApp
 
     private static void Err(string text) => Console.Error.WriteLine(text);
 
+    private static int WorkspaceModes(Args args) => new[]
+    {
+        args.Kv.ContainsKey("preset-save"), args.Flags.Contains("preset-list"), args.Kv.ContainsKey("ci-project"),
+        args.Kv.ContainsKey("library"), args.Kv.ContainsKey("contest"), args.Kv.ContainsKey("compare-problem"),
+        args.Kv.ContainsKey("check-resources"), args.Kv.ContainsKey("check-translations"), args.Kv.ContainsKey("format-info"),
+        args.Kv.ContainsKey("export-tests"), args.Kv.ContainsKey("library-clone"), args.Kv.ContainsKey("plugin-check"),
+    }.Count(value => value);
+
+    private static int RunWorkspaceCommand(Args a, IJobLog log)
+    {
+        try
+        {
+            if (a.Flags.Contains("preset-list"))
+            {
+                foreach (string path in AuthoringPresetStore.List(a.Kv.GetValueOrDefault("preset-dir")))
+                {
+                    try { var preset = AuthoringPreset.Load(path); Console.Out.WriteLine($"{preset.Name}\t{preset.ProblemId}\t{preset.TestCount} test\t{path}"); }
+                    catch (Exception ex) { Console.Out.WriteLine($"INVALID\t{path}\t{ex.Message}"); }
+                }
+                return 0;
+            }
+            if (a.Kv.TryGetValue("preset-save", out string? presetName))
+            {
+                if (!a.Kv.TryGetValue("problem", out string? problemId)) throw new InvalidDataException("--preset-save cần --problem <dạng>.");
+                var problem = Problems.Find(problemId) ?? throw new InvalidDataException("Không tìm thấy khuôn bài: " + problemId);
+                TestPlanProfile plan = a.Kv.TryGetValue("plan", out string? planPath) ? TestPlanProfile.Load(planPath) : new TestPlanProfile { ProblemId = problem.Id };
+                if (!string.Equals(plan.ProblemId, problem.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("ProblemId trong --plan không khớp --problem.");
+                var requiredTags = plan.RequiredCoverageTags?.ToList() ?? new List<string>();
+                if (a.Kv.TryGetValue("coverage-required", out string? requiredTagText))
+                {
+                    if (TestCoverageTags.Parse(requiredTagText, out var parsedTags) is { } tagError) throw new InvalidDataException(tagError);
+                    requiredTags = requiredTags.Concat(parsedTags).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    plan.RequiredCoverageTags = requiredTags.ToList();
+                }
+                Config config = problem.DefaultConfig();
+                foreach (var parameter in problem.Params)
+                {
+                    if (!a.Kv.TryGetValue(parameter.Key, out string? raw)) continue;
+                    if (parameter.Type == ParamType.Text) config.SetText(parameter.Key, raw);
+                    else if (Util.ParseLL(raw, out long number)) config.Set(parameter.Key, number);
+                    else throw new InvalidDataException($"Tham số --{parameter.Key} không phải số nguyên hợp lệ.");
+                }
+                if (Generator.ValidateFullConfig(problem, config) is { } configError) throw new InvalidDataException(configError);
+                ulong? seed = null;
+                if (a.Kv.TryGetValue("seed", out string? seedText))
+                {
+                    if (!Util.ParseULL(seedText, out ulong parsed)) throw new InvalidDataException("--seed phải là số nguyên không âm.");
+                    seed = parsed;
+                }
+                int count = 10;
+                if (a.Kv.TryGetValue("tests", out string? countText) && (!int.TryParse(countText, out count) || count < 1 || count > Generator.MaxTests))
+                    throw new InvalidDataException($"--tests phải trong [1, {Generator.MaxTests}].");
+                var preset = new AuthoringPreset
+                {
+                    Name = presetName, ProblemId = problem.Id, TestCount = plan.Groups.Count > 0 ? plan.TotalTestCount : count,
+                    ReferenceSolution = a.Kv.GetValueOrDefault("solution", ""),
+                    Seed = seed, SeedPolicy = seed.HasValue ? "Fixed" : "Random", TestPlan = plan,
+                    ValidatorPath = a.Kv.GetValueOrDefault("validator", ""), CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
+                    CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
+                    CheckerTimeoutMs = a.Kv.TryGetValue("checker-timeout", out string? timeoutText) && int.TryParse(timeoutText, out int timeout) ? timeout : 0,
+                    ContractSuitePath = a.Kv.GetValueOrDefault("contract-suite", ""),
+                    RequiredCoverageTags = requiredTags,
+                    Ints = new(config.Ints), Texts = new(config.Texts),
+                };
+                string saved = AuthoringPresetStore.Save(preset, a.Kv.GetValueOrDefault("preset-dir"));
+                Console.Out.WriteLine("Đã lưu preset: " + saved);
+                return 0;
+            }
+            if (a.Kv.TryGetValue("ci-project", out string? ciProject))
+            {
+                var outcome = CliProjectCiAudit.Run(ciProject, log);
+                if (outcome.Error.Length > 0) Err("LỖI CI: " + outcome.Error);
+                else Console.Out.WriteLine(outcome.Text);
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath, outcome.Json, out string? jsonError))
+                { Err(jsonError ?? "Không ghi được JSON report."); return 2; }
+                return outcome.ExitCode;
+            }
+            if (a.Kv.TryGetValue("library", out string? libraryPath))
+            {
+                var entries = ProblemLibrary.Scan(libraryPath, a.Kv.GetValueOrDefault("library-search"), a.Kv.GetValueOrDefault("library-tag"));
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath, new { count = entries.Count, entries }, out string? jsonError))
+                    throw new IOException(jsonError ?? "Không ghi được JSON report.");
+                foreach (var entry in entries) Console.Out.WriteLine($"{entry.Code}\t{entry.Name}\t{entry.ProblemId}\t[{string.Join(',', entry.Tags)}]\t{entry.Kind}\t{entry.Path}");
+                Console.Out.WriteLine($"Tổng: {entries.Count} mục.");
+                return 0;
+            }
+            if (a.Kv.TryGetValue("library-clone", out string? cloneSource))
+            {
+                if (!a.Kv.TryGetValue("out", out string? cloneDestination)) throw new InvalidDataException("--library-clone cần --out <file.ojproject>.");
+                string cloned = ProblemLibrary.CloneProject(cloneSource, cloneDestination);
+                Console.Out.WriteLine("Đã nhân bản project: " + cloned);
+                return 0;
+            }
+            if (a.Kv.TryGetValue("plugin-check", out string? pluginCheckPath))
+            {
+                if (a.Kv.ContainsKey("plugin")) throw new InvalidDataException("Dùng --plugin-check PATH riêng; không kèm --plugin.");
+                var messages = ProblemPluginLoader.LoadFrom(pluginCheckPath);
+                foreach (string message in messages) Console.Out.WriteLine(message);
+                bool failed = messages.Count == 0 || messages.Any(message => message.StartsWith("Không nạp", StringComparison.OrdinalIgnoreCase) ||
+                    message.StartsWith("Không tìm thấy plugin", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("ID dạng bài rỗng hoặc trùng", StringComparison.OrdinalIgnoreCase));
+                Console.Out.WriteLine(failed ? "Plugin chưa đạt kiểm tra tương thích." : "Plugin đã được nạp và tương thích API.");
+                return failed ? 2 : 0;
+            }
+            if (a.Kv.TryGetValue("contest", out string? contestPath))
+            {
+                var contest = ContestWorkspaceDocument.Load(contestPath);
+                string root = Path.GetDirectoryName(Path.GetFullPath(contestPath))!;
+                var errors = new List<string>();
+                var warnings = new List<string>();
+                foreach (var item in contest.Problems.OrderBy(item => item.Order))
+                {
+                    string projectPath = Path.GetFullPath(Path.IsPathRooted(item.ProjectPath) ? item.ProjectPath : Path.Combine(root, item.ProjectPath));
+                    if (item.PackagePath.Length > 0) item.PackagePath = Path.GetFullPath(Path.IsPathRooted(item.PackagePath) ? item.PackagePath : Path.Combine(root, item.PackagePath));
+                    if (!File.Exists(projectPath)) { errors.Add($"{item.Code}: thiếu project {projectPath}"); continue; }
+                    try
+                    {
+                        using var project = System.Text.Json.JsonDocument.Parse(File.ReadAllText(projectPath));
+                        string id = project.RootElement.TryGetProperty("ProblemId", out var idValue) ? idValue.GetString() ?? "" : "";
+                        string code = project.RootElement.TryGetProperty("ProblemCode", out var codeValue) ? codeValue.GetString() ?? "" : "";
+                        if (id.Length == 0 || Problems.Find(id) == null) errors.Add($"{item.Code}: project dùng ProblemId không hợp lệ.");
+                        if (code.Length > 0 && !string.Equals(code, item.Code, StringComparison.OrdinalIgnoreCase)) warnings.Add($"{item.Code}: mã trong project là '{code}'.");
+                    }
+                    catch (Exception ex) { errors.Add($"{item.Code}: project không đọc được: {ex.Message}"); }
+                }
+                Console.Out.WriteLine($"Contest '{contest.Name}': {contest.Problems.Count} bài, {contest.DurationMinutes} phút.");
+                foreach (string error in errors) Console.Out.WriteLine("LỖI: " + error);
+                foreach (string warning in warnings) Console.Out.WriteLine("LƯU Ý: " + warning);
+                string? archivePath = null;
+                if (errors.Count == 0 && a.Kv.TryGetValue("contest-export", out string? contestExport))
+                {
+                    archivePath = contest.ExportArchive(contestExport);
+                    Console.Out.WriteLine("Đã gộp package contest: " + archivePath);
+                }
+                var result = new { passed = errors.Count == 0, contest.Name, contest.DurationMinutes, problemCount = contest.Problems.Count, archivePath, errors, warnings };
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath, result, out string? jsonError))
+                    throw new IOException(jsonError ?? "Không ghi được JSON report.");
+                return errors.Count > 0 ? 2 : warnings.Count > 0 ? 1 : 0;
+            }
+            if (a.Kv.TryGetValue("compare-problem", out string? left))
+            {
+                if (!a.Kv.TryGetValue("against", out string? right)) throw new InvalidDataException("--compare-problem cần --against <đường dẫn B>.");
+                var diff = ProblemVersionComparer.Compare(left, right);
+                foreach (string item in diff.Added) Console.Out.WriteLine("+ " + item);
+                foreach (string item in diff.Removed) Console.Out.WriteLine("- " + item);
+                foreach (string item in diff.Changed) Console.Out.WriteLine("* " + item);
+                foreach (string item in diff.ReproducibilityRisks) Console.Out.WriteLine("! Rủi ro tái lập: " + item);
+                Console.Out.WriteLine(diff.Same ? "Hai phiên bản giống nhau." : $"Khác nhau: +{diff.Added.Count} -{diff.Removed.Count} *{diff.Changed.Count}.");
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath,
+                    new { same = diff.Same, diff.Added, diff.Removed, diff.Changed, diff.ReproducibilityRisks }, out string? jsonError))
+                    throw new IOException(jsonError ?? "Không ghi được JSON report.");
+                return diff.Same ? 0 : 1;
+            }
+            if (a.Kv.TryGetValue("check-resources", out string? statementPath))
+            {
+                string source;
+                if (Path.GetFileName(statementPath).EndsWith(".ojdraft.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var statement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(statementPath));
+                    source = string.Join("\n", "# " + ReadJsonString(statement.RootElement, "Name"), ReadJsonString(statement.RootElement, "Description"),
+                        ReadJsonString(statement.RootElement, "Input"), ReadJsonString(statement.RootElement, "Output"), ReadJsonString(statement.RootElement, "Constraints"), ReadJsonString(statement.RootElement, "Examples"));
+                }
+                else source = File.ReadAllText(statementPath);
+                var resources = StatementResourceManager.CheckContent(source, Path.GetDirectoryName(Path.GetFullPath(statementPath))!);
+                foreach (string item in resources.Missing) Console.Out.WriteLine("MISSING: " + item);
+                foreach (string item in resources.Unsafe) Console.Out.WriteLine("UNSAFE: " + item);
+                foreach (string item in resources.Remote) Console.Out.WriteLine("REMOTE (offline, not checked): " + item);
+                Console.Out.WriteLine(resources.IsValid ? "Tài nguyên nội bộ hợp lệ." : "Có tài nguyên bị thiếu hoặc đường dẫn không an toàn.");
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath,
+                    new { passed = resources.IsValid, resources.Missing, resources.Unsafe, resources.Remote }, out string? jsonError)) throw new IOException(jsonError ?? "Không ghi được JSON report.");
+                return resources.IsValid ? 0 : 2;
+            }
+            if (a.Kv.TryGetValue("check-translations", out string? translationsPath))
+            {
+                var report = TranslationManager.Check(translationsPath);
+                foreach (string item in report.Errors) Console.Out.WriteLine("LỖI: " + item);
+                foreach (string item in report.Warnings) Console.Out.WriteLine("LƯU Ý: " + item);
+                Console.Out.WriteLine(report.Passed ? "Kiểm tra bản dịch đạt." : "Kiểm tra bản dịch chưa đạt.");
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath,
+                    new { passed = report.Passed, report.Errors, report.Warnings }, out string? jsonError)) throw new IOException(jsonError ?? "Không ghi được JSON report.");
+                return report.Passed ? report.Warnings.Count > 0 ? 1 : 0 : 2;
+            }
+            if (a.Kv.TryGetValue("format-info", out string? format))
+            {
+                Console.Out.WriteLine("Định dạng test-data có thể nhập: " + string.Join("; ", ProblemFormatCompatibility.SupportedTestFormats));
+                Console.Out.WriteLine(ProblemFormatCompatibility.CompatibilityNote(format));
+                return 0;
+            }
+            if (a.Kv.TryGetValue("export-tests", out string? exportSource))
+            {
+                if (!a.Kv.TryGetValue("format", out string? formatName) || !a.Kv.TryGetValue("out", out string? outputPath))
+                    throw new InvalidDataException("--export-tests cần --format <định dạng> và --out <file.zip>.");
+                var exported = TestPackageTools.ExportTestData(exportSource, outputPath, formatName);
+                Console.Out.WriteLine($"Đã xuất {exported.TestCount} test-data dạng {exported.Format}: {exported.ArchivePath}");
+                Console.Out.WriteLine("Đây là gói test-data trung gian, không gồm statement, checker, validator hoặc toàn bộ metadata native của judge.");
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath,
+                    new { archivePath = exported.ArchivePath, exported.Format, exported.TestCount }, out string? jsonError)) throw new IOException(jsonError ?? "Không ghi được JSON report.");
+                return 0;
+            }
+        }
+        catch (Exception ex) { Err("LỖI workspace: " + ex.Message); return 2; }
+        return 2;
+    }
+
+    private static string ReadJsonString(System.Text.Json.JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() ?? "" : "";
+
     public static int Run(string[] argv)
     {
         var a = new Args();
@@ -379,16 +608,24 @@ internal static class CliApp
         }
         var log = new ConsoleLog();
         string defaultPluginPath = Path.Combine(AppContext.BaseDirectory, "plugins");
-        if (a.Kv.TryGetValue("plugin", out string? pluginPath))
-            foreach (string pluginMessage in ProblemPluginLoader.LoadFrom(pluginPath))
-                Console.Error.WriteLine("PLUGIN: " + pluginMessage);
-        else if (Directory.Exists(defaultPluginPath))
-            foreach (string pluginMessage in ProblemPluginLoader.LoadFrom(defaultPluginPath))
-                Console.Error.WriteLine("PLUGIN: " + pluginMessage);
+        if (!a.Kv.ContainsKey("plugin-check"))
+        {
+            if (a.Kv.TryGetValue("plugin", out string? pluginPath))
+                foreach (string pluginMessage in ProblemPluginLoader.LoadFrom(pluginPath))
+                    Console.Error.WriteLine("PLUGIN: " + pluginMessage);
+            else if (Directory.Exists(defaultPluginPath))
+                foreach (string pluginMessage in ProblemPluginLoader.LoadFrom(defaultPluginPath))
+                    Console.Error.WriteLine("PLUGIN: " + pluginMessage);
+        }
         if (argv.Length == 0 || a.Flags.Contains("help") || a.Flags.Contains("h")) { Console.Out.Write(UsageText()); return 0; }
         if (a.Flags.Contains("version")) { Console.Out.WriteLine("ojgen " + Util.Version); return 0; }
         if (a.Flags.Contains("list")) { Console.Out.Write(ListText()); return 0; }
         if (a.Flags.Contains("selftest")) return SelfTest.Run(log);
+        int workspaceModes = WorkspaceModes(a);
+        if (workspaceModes > 1) { Err("LỖI: chạy một lệnh workspace mỗi lần."); return 2; }
+        if (workspaceModes == 1) return RunWorkspaceCommand(a, log);
+        if (a.Kv.ContainsKey("preset-dir") || a.Kv.ContainsKey("library-search") || a.Kv.ContainsKey("library-tag") || a.Kv.ContainsKey("format") || a.Kv.ContainsKey("contest-export") && !a.Kv.ContainsKey("contest"))
+        { Err("LỖI: tùy chọn workspace đang thiếu lệnh tương ứng."); return 2; }
         if (a.Flags.Contains("topics"))
         {
             if (a.Kv.ContainsKey("topic")) { Err("LỖI: không dùng --topic cùng --topics."); return 2; }
@@ -476,8 +713,24 @@ internal static class CliApp
             }
         }
 
+        AuthoringPreset? authoringPreset = null;
         TestPlanProfile? testPlan = null;
-        if (a.Kv.TryGetValue("plan", out var planPath))
+        if (a.Kv.TryGetValue("preset", out string? presetPath))
+        {
+            if (profile != null || a.Kv.ContainsKey("plan")) { Err("LỖI: dùng một trong --profile, --plan hoặc --preset."); return 2; }
+            try
+            {
+                authoringPreset = AuthoringPreset.Load(presetPath);
+                if (a.Kv.TryGetValue("problem", out string? presetProblem) && !string.Equals(presetProblem, authoringPreset.ProblemId, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("--problem không khớp ProblemId trong preset.");
+                if (authoringPreset.TestPlan.Groups.Count > 0) testPlan = authoringPreset.TestPlan;
+            }
+            catch (Exception ex) { Err("LỖI preset: " + ex.Message); return 2; }
+            if (auditDirMode) { Err("LỖI: --preset dùng để sinh test; --audit-dir kiểm định thư mục có sẵn."); return 2; }
+            auditMode |= authoringPreset.ValidatorPath.Length > 0 || authoringPreset.CheckerPath.Length > 0 ||
+                authoringPreset.ContractSuitePath.Length > 0 || authoringPreset.CandidateSolution.Length > 0;
+        }
+        else if (a.Kv.TryGetValue("plan", out var planPath))
         {
             try { testPlan = TestPlanProfile.Load(planPath); }
             catch (Exception ex) { Err("LỖI kế hoạch test: " + ex.Message); return 2; }
@@ -563,6 +816,7 @@ internal static class CliApp
         string pid;
         if (a.Kv.TryGetValue("problem", out var explicitProblemId)) pid = explicitProblemId;
         else if (profile is not null) pid = profile.ProblemId;
+        else if (authoringPreset is not null) pid = authoringPreset.ProblemId;
         else if (testPlan is not null) pid = testPlan.ProblemId;
         else if (selectedTopic is not null)
         {
@@ -589,6 +843,14 @@ internal static class CliApp
             }
             job.ProblemName = profile.Name;
             job.ProblemCode = profile.Code;
+        }
+        else if (authoringPreset is not null)
+        {
+            foreach (var parameter in prob.Params)
+            {
+                if (parameter.Type == ParamType.Text && authoringPreset.Texts.TryGetValue(parameter.Key, out string? textValue)) job.Cfg.SetText(parameter.Key, textValue);
+                else if (parameter.Type != ParamType.Text && authoringPreset.Ints.TryGetValue(parameter.Key, out long intValue)) job.Cfg.Set(parameter.Key, intValue);
+            }
         }
         var explicitKeys = new HashSet<string>();
         var specs = prob.Params.ToDictionary(x => x.Key);
@@ -626,7 +888,7 @@ internal static class CliApp
         if (testPlan != null && explicitKeys.Count > 0)
         { Err("LỖI: --plan đã chứa cấu hình cho từng nhóm; không truyền thêm tham số riêng của khuôn."); return 2; }
 
-        long tests = 10;
+        long tests = authoringPreset?.TestCount ?? 10;
         if (testPlan != null && a.Kv.ContainsKey("tests"))
         { Err("LỖI: số test đã được lưu trong --plan; bỏ --tests."); return 2; }
         if (a.Kv.TryGetValue("tests", out var ts) && (!Util.ParseLL(ts, out tests) || tests < 1 || tests > Generator.MaxTests))
@@ -652,11 +914,14 @@ internal static class CliApp
             job.RequiredCoverageTags = job.RequiredCoverageTags.Concat(parsedRequiredTags)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
+        else if (authoringPreset != null && job.RequiredCoverageTags.Count == 0)
+            job.RequiredCoverageTags = authoringPreset.RequiredCoverageTags.ToList();
         if (a.Kv.TryGetValue("seed", out var ss))
         {
             if (!Util.ParseULL(ss, out ulong sv)) { Err("LỖI: --seed phải là số nguyên không âm."); return 2; }
             job.Seed = sv;
         }
+        else if (authoringPreset?.SeedPolicy == "Fixed") job.Seed = authoringPreset.Seed;
         if (a.Flags.Contains("resume") && job.Seed == null)
         { Err("LỖI: --resume cần --seed để tái tạo đúng cùng cấu hình và thứ tự sinh."); return 2; }
         if (a.Kv.TryGetValue("solution", out var sol))
@@ -665,6 +930,7 @@ internal static class CliApp
             if (sol.Trim().Length == 0) { Err("LỖI: --solution rỗng."); return 2; }
         }
         else if (profile is not null) job.SolutionPath = profile.SolutionPath;
+        else if (authoringPreset is not null) job.SolutionPath = authoringPreset.ReferenceSolution;
 
         if (auditDirMode)
         {
@@ -754,12 +1020,12 @@ internal static class CliApp
             TestDirectory = outDir,
             ExpectedTestCount = job.TestCount,
             ReferenceSolution = job.SolutionPath,
-            ValidatorPath = a.Kv.GetValueOrDefault("validator", ""),
-            CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
+            ValidatorPath = a.Kv.GetValueOrDefault("validator", authoringPreset?.ValidatorPath ?? ""),
+            CheckerPath = a.Kv.GetValueOrDefault("checker", authoringPreset?.CheckerPath ?? ""),
             CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
-            CheckerTimeoutMs = checkerTimeoutMs,
-            ContractSuitePath = a.Kv.GetValueOrDefault("contract-suite", ""),
-            CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
+            CheckerTimeoutMs = checkerTimeoutMs > 0 ? checkerTimeoutMs : authoringPreset?.CheckerTimeoutMs ?? 0,
+            ContractSuitePath = a.Kv.GetValueOrDefault("contract-suite", authoringPreset?.ContractSuitePath ?? ""),
+            CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", authoringPreset?.CandidateSolution ?? ""),
             StatementPath = a.Kv.GetValueOrDefault("statement", ""),
             Seed = generated.Seed,
             DifferentialSeed = generated.Seed,

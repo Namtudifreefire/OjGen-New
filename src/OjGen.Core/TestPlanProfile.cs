@@ -116,7 +116,7 @@ public sealed class TestPlanProfile
 
     public int TotalTestCount => Groups?.Sum(group => group.TestCount) ?? 0;
 
-    public void Save(string path) => File.WriteAllText(path,
+    public void Save(string path) => AtomicFile.WriteAllText(path,
         JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
 }
 

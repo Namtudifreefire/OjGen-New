@@ -44,10 +44,7 @@ internal sealed class OjProjectDocument
         SavedUtc = DateTimeOffset.UtcNow;
         string full = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        string temp = full + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
-        if (File.Exists(full)) File.Move(temp, full, overwrite: true);
-        else File.Move(temp, full);
+        AtomicFile.WriteAllText(full, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
     }
 
     public static OjProjectDocument Load(string path)

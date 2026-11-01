@@ -13,7 +13,9 @@ public partial class StatementEditorWindow : Window
     private readonly Config _config;
     private readonly List<ManualTestSpec> _samples;
     private readonly DispatcherTimer _previewTimer;
-    private bool _loading;
+    // InitializeComponent raises TextChanged while building some TextBoxes; keep handlers inert until
+    // Document and all controls have been populated.
+    private bool _loading = true;
 
     internal ProblemAuthoringDocument Document { get; private set; }
     internal ProblemAuthoringDocument? Result { get; private set; }
@@ -161,7 +163,7 @@ public partial class StatementEditorWindow : Window
         UpdateDocument();
         var dialog = new SaveFileDialog { Title = "Xuất đề dạng Markdown", Filter = "Markdown (*.md)|*.md", FileName = (Document.Code.Length == 0 ? "problem" : Document.Code) + ".md" };
         if (dialog.ShowDialog(this) != true) return;
-        try { File.WriteAllText(dialog.FileName, Document.ToMarkdown(), new UTF8Encoding(false)); }
+        try { AtomicFile.WriteAllText(dialog.FileName, Document.ToMarkdown(), new UTF8Encoding(false)); }
         catch (Exception ex) { MessageBox.Show(this, "Không xuất được Markdown: " + ex.Message, "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 

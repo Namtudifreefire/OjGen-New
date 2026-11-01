@@ -184,7 +184,7 @@ internal sealed class ProblemAuthoringDocument
         return "<span class=\"math\">" + expression + "</span>";
     }
 
-    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+    public void Save(string path) => AtomicFile.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
 
     public static ProblemAuthoringDocument Load(string path)
     {

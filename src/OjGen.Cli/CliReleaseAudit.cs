@@ -393,7 +393,7 @@ internal static class CliReleaseAudit
         Directory.CreateDirectory(options.TestDirectory);
         if (options.StatementPath.Trim().Length > 0 && File.Exists(options.StatementPath))
             File.Copy(options.StatementPath, Path.Combine(options.TestDirectory, "problem.ojdraft.json"), overwrite: true);
-        File.WriteAllText(Path.Combine(options.TestDirectory, "AUDIT_REPORT.txt"), report.ToText(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(options.TestDirectory, "AUDIT_REPORT.txt"), report.ToText(), new UTF8Encoding(false));
 
         if (!actualSeed.HasValue)
         {
@@ -441,17 +441,17 @@ internal static class CliReleaseAudit
             }
             return files.OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase).ToList();
         }
-        File.WriteAllText(packagePath, PackageText(BundleFiles().Count), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(packagePath, PackageText(BundleFiles().Count), new UTF8Encoding(false));
         for (int pass = 0; pass < 2; pass++)
         {
             var lines = new StringBuilder();
             foreach (string file in BundleFiles()) lines.Append(HashFile(file)).Append("  ").Append(Path.GetFileName(file)).Append('\n');
-            File.WriteAllText(checksumPath, lines.ToString(), new UTF8Encoding(false));
-            File.WriteAllText(packagePath, PackageText(BundleFiles().Count), new UTF8Encoding(false));
+            AtomicFile.WriteAllText(checksumPath, lines.ToString(), new UTF8Encoding(false));
+            AtomicFile.WriteAllText(packagePath, PackageText(BundleFiles().Count), new UTF8Encoding(false));
         }
         var finalLines = new StringBuilder();
         foreach (string file in BundleFiles()) finalLines.Append(HashFile(file)).Append("  ").Append(Path.GetFileName(file)).Append('\n');
-        File.WriteAllText(checksumPath, finalLines.ToString(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(checksumPath, finalLines.ToString(), new UTF8Encoding(false));
     }
 
     public static CliAuditReport Run(CliAuditOptions options, IJobLog log, CancellationToken ct = default)

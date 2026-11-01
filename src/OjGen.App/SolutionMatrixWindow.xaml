@@ -30,9 +30,17 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Lời giải" Binding="{Binding Name}" Width="170"/>
                 <DataGridTextColumn Header="Vai trò" Binding="{Binding Role}" Width="130"/>
+                <DataGridTextColumn Header="AC" Binding="{Binding Accepted}" Width="55"/>
+                <DataGridTextColumn Header="WA" Binding="{Binding WrongAnswer}" Width="55"/>
+                <DataGridTextColumn Header="TLE" Binding="{Binding TimeLimitExceeded}" Width="55"/>
+                <DataGridTextColumn Header="RE" Binding="{Binding RuntimeError}" Width="55"/>
                 <DataGridTextColumn Header="Khác test chuẩn" Binding="{Binding Different}" Width="125"/>
                 <DataGridTextColumn Header="Trạng thái" Binding="{Binding Status}" Width="180"/>
-                <DataGridTextColumn Header="Test phân biệt" Binding="{Binding DistinguishingTests}" Width="*"/>
+                <DataGridTextColumn Header="Test phân biệt" Binding="{Binding DistinguishingTests}" Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding VerdictTests}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
             </DataGrid.Columns>
         </DataGrid>
         <DockPanel Grid.Row="4" Margin="0,8,0,0">

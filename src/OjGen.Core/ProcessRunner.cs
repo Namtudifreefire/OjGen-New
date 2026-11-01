@@ -96,21 +96,60 @@ public static class ProcessRunner
                                 string workDir, RunLimits lim, CancellationToken ct = default, bool unixLimits = false)
     {
         var res = new RunResult();
+        if (argv == null || argv.Count == 0 || string.IsNullOrWhiteSpace(argv[0]) || argv.Any(argument => argument == null))
+        {
+            res.Message = "Lệnh chạy rỗng hoặc chứa đối số không hợp lệ.";
+            return res;
+        }
+        if (lim == null || lim.TimeoutMs < 1)
+        {
+            res.Message = "Giới hạn thời gian chạy phải lớn hơn 0 ms.";
+            return res;
+        }
+        if (string.IsNullOrWhiteSpace(outFile) || string.IsNullOrWhiteSpace(errFile))
+        {
+            res.Message = "Thiếu đường dẫn file stdout/stderr tạm.";
+            return res;
+        }
+        if (ct.IsCancellationRequested)
+        {
+            res.Status = RunStatus.Cancelled;
+            res.Message = "Đã hủy trước khi khởi chạy tiến trình.";
+            return res;
+        }
         FileStream? fin = null, fout = null, ferr = null;
         Process? p = null;
         try
         {
+            string fullOutPath = Path.GetFullPath(outFile);
+            string fullErrPath = Path.GetFullPath(errFile);
+            StringComparison pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            string? fullInputPath = string.IsNullOrWhiteSpace(inFile) ? null : Path.GetFullPath(inFile);
+            if (fullInputPath != null &&
+                (string.Equals(fullInputPath, fullOutPath, pathComparison) || string.Equals(fullInputPath, fullErrPath, pathComparison)))
+            {
+                res.Message = "File input không được trùng với file stdout/stderr vì tiến trình sẽ ghi đè input.";
+                return res;
+            }
             if (!string.IsNullOrEmpty(inFile))
             {
-                try { fin = new FileStream(inFile, FileMode.Open, FileAccess.Read, FileShare.Read); }
+                try { fin = new FileStream(fullInputPath!, FileMode.Open, FileAccess.Read, FileShare.Read); }
                 catch (Exception) { res.Message = "Không mở được file input: " + inFile; return res; }
             }
-            try { fout = new FileStream(outFile, FileMode.Create, FileAccess.Write, FileShare.Read); }
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(fullOutPath)!);
+                fout = new FileStream(fullOutPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+            }
             catch (Exception) { res.Message = "Không tạo được file output tạm: " + outFile; return res; }
-            bool sameErr = string.Equals(Path.GetFullPath(errFile), Path.GetFullPath(outFile), StringComparison.Ordinal);
+            bool sameErr = string.Equals(fullErrPath, fullOutPath, pathComparison);
             if (!sameErr)
             {
-                try { ferr = new FileStream(errFile, FileMode.Create, FileAccess.Write, FileShare.Read); }
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(fullErrPath)!);
+                    ferr = new FileStream(fullErrPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                }
                 catch (Exception) { res.Message = "Không tạo được file stderr tạm."; return res; }
             }
 
@@ -166,6 +205,7 @@ public static class ProcessRunner
             object sink = new();
             ulong outTotal = 0;
             bool exceeded = false;
+            Exception? outputPumpError = null;
 
             // stdin <- file
             var pumpIn = Task.Run(() =>
@@ -198,7 +238,7 @@ public static class ProcessRunner
                         }
                     }
                 }
-                catch (Exception) { }
+                catch (Exception ex) { Interlocked.CompareExchange(ref outputPumpError, ex, null); }
             });
 
             // stderr -> file (gộp chung hoặc riêng, riêng thì giữ tối đa 1 MB)
@@ -228,7 +268,7 @@ public static class ProcessRunner
                         }
                     }
                 }
-                catch (Exception) { }
+                catch (Exception ex) { Interlocked.CompareExchange(ref outputPumpError, ex, null); }
             });
 
             res.Status = RunStatus.Ok;
@@ -237,14 +277,17 @@ public static class ProcessRunner
             ulong memUsed = 0;
             while (true)
             {
-                if (p.WaitForExit(2)) { exited = true; break; }
                 if (ct.IsCancellationRequested) { res.Status = RunStatus.Cancelled; break; }
                 if (exceeded) { res.Status = RunStatus.OutputLimit; break; }
                 long ms = sw.ElapsedMilliseconds;
-                if (ms > lim.TimeoutMs) { res.Status = RunStatus.Timeout; break; }
+                long remaining = lim.TimeoutMs - ms;
+                if (remaining <= 0) { res.Status = RunStatus.Timeout; break; }
+                int waitMs = (int)Math.Min(20, remaining);
+                if (p.WaitForExit(waitMs)) { exited = true; break; }
+                ms = sw.ElapsedMilliseconds;
                 if (ms >= nextMemCheck)
                 {
-                    nextMemCheck = ms + 10;
+                    nextMemCheck = ms + 100;
                     try
                     {
                         p.Refresh();
@@ -270,7 +313,6 @@ public static class ProcessRunner
                 if (res.Status == RunStatus.Ok && outTotal > lim.MaxOutputBytes) exceeded = true;
             }
             if (res.Status == RunStatus.Ok && exceeded) res.Status = RunStatus.OutputLimit;
-
             if (res.Status == RunStatus.Cancelled)
             {
                 res.Message = "Đã hủy theo yêu cầu.";
@@ -282,6 +324,12 @@ public static class ProcessRunner
             else if (res.Status == RunStatus.OutputLimit)
             {
                 res.Message = $"Output vượt {Util.FmtBytes(lim.MaxOutputBytes)} nên đã bị dừng.";
+            }
+            else if (outputPumpError != null)
+            {
+                res.Status = RunStatus.StartFailed;
+                res.ExitCode = code;
+                res.Message = "Lỗi đọc/ghi luồng stdout hoặc stderr: " + outputPumpError.Message;
             }
             else if (memExceeded)
             {

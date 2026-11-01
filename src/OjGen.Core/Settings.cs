@@ -117,7 +117,7 @@ public sealed class Settings
             string file = SourcePath ?? FileName;
             string? dir = Path.GetDirectoryName(Path.GetFullPath(file));
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(file, os.ToString(), new UTF8Encoding(false));
+            AtomicFile.WriteAllText(file, os.ToString(), new UTF8Encoding(false));
             return true;
         }
         catch (Exception ex)

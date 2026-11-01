@@ -129,7 +129,7 @@ public static class Job
                 settings.CompileTimeoutSec, settings.MaxOutputMB, settings.MemoryMB, settings.NormalizeEol, settings.Prefix },
             tests = testRecords,
         };
-        File.WriteAllText(Path.Combine(outDir, "ojgen_provenance.json"),
+        AtomicFile.WriteAllText(Path.Combine(outDir, "ojgen_provenance.json"),
             JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
     }
 
@@ -320,7 +320,9 @@ public static class Job
     {
         err = null;
         string zip = ZipPathFor(dir);
-        int n = FileManager.CountTestFiles(dir);
+        int n;
+        try { n = FileManager.CountTestFiles(dir); }
+        catch (Exception ex) { err = "Không thể kiểm tra thư mục đầu ra: " + ex.Message; return false; }
         bool zipExists = File.Exists(zip);
         if (n == 0 && !zipExists) return true;
         if (policy == ExistingPolicy.NewDir)

@@ -122,9 +122,7 @@ public static class SolutionRunner
         error = null;
         try
         {
-            string temp = path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(checkpoint), new UTF8Encoding(false));
-            File.Move(temp, path, overwrite: true);
+            AtomicFile.WriteAllText(path, JsonSerializer.Serialize(checkpoint), new UTF8Encoding(false));
             return true;
         }
         catch (Exception ex) { error = "Không lưu được checkpoint output: " + ex.Message; return false; }

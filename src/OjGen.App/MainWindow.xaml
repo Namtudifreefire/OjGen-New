@@ -18,6 +18,9 @@
                 <MenuItem Header="📄 Lưu dự án thành…" Click="MnuSaveProjectAs_Click" InputGestureText="Ctrl+Shift+S" />
                 <MenuItem Header="📂 Mở dự án…" Click="MnuOpenProject_Click" InputGestureText="Ctrl+O" />
                 <Separator />
+                <MenuItem Header="🧩 Lưu preset ra đề…" Click="MnuSavePreset_Click" />
+                <MenuItem Header="🧩 Dùng preset ra đề…" Click="MnuOpenPreset_Click" />
+                <Separator />
                 <MenuItem Header="📂 Mở thư mục output" Click="MnuOpenOutput_Click" />
                 <Separator />
                 <MenuItem x:Name="mnuStatement" Header="✍ Soạn nội dung đề…" Click="MnuStatement_Click" />

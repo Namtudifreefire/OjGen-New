@@ -61,7 +61,7 @@ internal static class ProblemPackageExporter
         catch (DecoderFallbackException ex) { throw new InvalidDataException("Nội dung văn bản trong gói phải là UTF-8: " + Path.GetFileName(source), ex); }
         content = content.TrimStart('\uFEFF').Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         if (content.Length > 0 && !content.EndsWith('\n')) content += "\n";
-        File.WriteAllText(target, content, new UTF8Encoding(false));
+        AtomicFile.WriteAllText(target, content, new UTF8Encoding(false));
     }
 
     private static void CopyOptional(string source, string targetDirectory, string name)
@@ -87,7 +87,7 @@ internal static class ProblemPackageExporter
             string relative = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
             lines.Append(hash).Append("  ").Append(relative).Append('\n');
         }
-        File.WriteAllText(manifestPath, lines.ToString(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(manifestPath, lines.ToString(), new UTF8Encoding(false));
         return files.Count;
     }
 
@@ -120,7 +120,7 @@ internal static class ProblemPackageExporter
                 .Append(Csv(string.Join(';', tags))).Append(',').Append(new FileInfo(input).Length).Append(',')
                 .Append(HashOptionalFile(input)).Append(',').Append(outputBytes).Append(',').Append(outputHash).Append('\n');
         }
-        File.WriteAllText(Path.Combine(root, "TEST_INVENTORY.csv"), csv.ToString(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(root, "TEST_INVENTORY.csv"), csv.ToString(), new UTF8Encoding(false));
     }
 
     private static string HashOptionalFile(string path)
@@ -210,8 +210,8 @@ internal static class ProblemPackageExporter
             if (options.ExportFormat == "Icpc")
                 return ExportIcpcPackage(options, document, problem, packageDirectory, testInputs, manualTests);
 
-        File.WriteAllText(Path.Combine(packageDirectory, "statement.md"), document.ToMarkdown(), new UTF8Encoding(false));
-        File.WriteAllText(Path.Combine(packageDirectory, "statement.html"), document.ToHtml(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(packageDirectory, "statement.md"), document.ToMarkdown(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(packageDirectory, "statement.html"), document.ToHtml(), new UTF8Encoding(false));
         string packagedSolutionPath = options.IncludeReferenceSolution ? options.ReferenceSolution : "";
         ProblemProfileFile.From(problem, config, document.Name, document.Code, packagedSolutionPath).Save(Path.Combine(packageDirectory, "problem.ojproblem.json"));
 
@@ -249,7 +249,7 @@ internal static class ProblemPackageExporter
             {
                 var (sample, manualIndex) = samplesToWrite[i];
                 string stem = "sample" + (i + 1).ToString("00");
-                File.WriteAllText(Path.Combine(samplesDirectory, stem + ".inp"), sample.Input, new UTF8Encoding(false));
+                AtomicFile.WriteAllText(Path.Combine(samplesDirectory, stem + ".inp"), sample.Input, new UTF8Encoding(false));
                 string sampleOutput = sample.ExpectedOutput.Length > 0 ? sample.ExpectedOutput : sample.GeneratedOutput;
                 if (sampleOutput.Length == 0 && manualIndex < testInputs.Count)
                 {
@@ -257,7 +257,7 @@ internal static class ProblemPackageExporter
                     if (File.Exists(sourceOutput)) sampleOutput = FileManager.ReadText(sourceOutput);
                 }
                 if (sampleOutput.Length > 0)
-                    File.WriteAllText(Path.Combine(samplesDirectory, stem + ".out"), sampleOutput, new UTF8Encoding(false));
+                    AtomicFile.WriteAllText(Path.Combine(samplesDirectory, stem + ".out"), sampleOutput, new UTF8Encoding(false));
                 samples++;
             }
         }
@@ -284,9 +284,9 @@ internal static class ProblemPackageExporter
             .Append("Tests: ").Append(inputs).Append(" input, ").Append(outputs).Append(" output\n")
             .Append("Samples: ").Append(samples).Append(" (sample output files are included when available)\n")
             .Append("Package checksum manifest excludes itself.\n");
-        File.WriteAllText(Path.Combine(packageDirectory, "PACKAGE.txt"), manifest.ToString(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(packageDirectory, "PACKAGE.txt"), manifest.ToString(), new UTF8Encoding(false));
         if (options.AuditReport.Length > 0)
-            File.WriteAllText(Path.Combine(packageDirectory, "AUDIT_REPORT.txt"), options.AuditReport, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(Path.Combine(packageDirectory, "AUDIT_REPORT.txt"), options.AuditReport, new UTF8Encoding(false));
         int hashedFiles = WritePackageChecksums(packageDirectory);
         File.AppendAllText(Path.Combine(packageDirectory, "PACKAGE.txt"), $"Package checksums: {PackageChecksumFile} ({hashedFiles} files)\n", new UTF8Encoding(false));
         // Refresh the manifest after adding its description to PACKAGE.txt.
@@ -351,14 +351,14 @@ internal static class ProblemPackageExporter
         string markdown = document.ToMarkdown();
         int titleEnd = markdown.IndexOf('\n');
         if (titleEnd >= 0) markdown = markdown[(titleEnd + 1)..].TrimStart();
-        File.WriteAllText(Path.Combine(statementDir, "problem.vi.md"), markdown, new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(statementDir, "problem.vi.md"), markdown, new UTF8Encoding(false));
         string timeSeconds = (document.TimeLimitMs / 1000d).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         string yaml = "problem_format_version: \"2025-09\"\n" +
             "name:\n  vi: " + YamlQuote(document.Name) + "\n" +
             "uuid: " + StablePackageUuid(document.Code) + "\n" +
             "type: pass-fail\n" +
             "limits:\n  time_limit: " + timeSeconds + "\n  memory: " + document.MemoryLimitMb + "\n";
-        File.WriteAllText(Path.Combine(packageDirectory, "problem.yaml"), yaml, new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(packageDirectory, "problem.yaml"), yaml, new UTF8Encoding(false));
 
         string rawSolutionExt = Path.GetExtension(options.ReferenceSolution);
         string solutionExt = rawSolutionExt.Equals(".C", StringComparison.Ordinal) ? ".cpp" : rawSolutionExt.ToLowerInvariant();
@@ -381,7 +381,7 @@ internal static class ProblemPackageExporter
             "set -e\n" +
             "if [ \"$status\" -eq 0 ]; then exit 42; else exit \"$status\"; fi\n";
         string launcherPath = Path.Combine(validatorProgramDir, "run");
-        File.WriteAllText(launcherPath, launcher, new UTF8Encoding(false));
+        AtomicFile.WriteAllText(launcherPath, launcher, new UTF8Encoding(false));
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             File.SetUnixFileMode(launcherPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
@@ -412,12 +412,12 @@ internal static class ProblemPackageExporter
         }
         if (secretCount == 0) throw new InvalidDataException("Gói ICPC/Kattis cần ít nhất một test trong data/secret; hãy giữ một test không đánh dấu Sample.");
         if (sampleCount == 0) Directory.Delete(sampleDir);
-        File.WriteAllText(Path.Combine(validatorProgramDir, "README.txt"),
+        AtomicFile.WriteAllText(Path.Combine(validatorProgramDir, "README.txt"),
             "This package uses the Kattis Problem Package Format 2025-09 release candidate. Check support in the target judge before importing.\n" +
             "The run script wraps validator.py, reads the judge input from stdin, also supplies a temporary input path as argv[1], and maps validator exit code 0 to 42.\n" +
             "The Python validator must be standalone and must use only its input and command-line arguments.\n" +
             "If executable permissions were not preserved, run: chmod +x run\n", new UTF8Encoding(false));
-        File.WriteAllText(Path.Combine(packageDirectory, "README-IMPORT.txt"),
+        AtomicFile.WriteAllText(Path.Combine(packageDirectory, "README-IMPORT.txt"),
             "This package uses the Kattis Problem Package Format 2025-09 release candidate. It is not widely supported; check the target judge before importing.\n" +
             "The validator launcher and accepted solution are source files. Review package metadata, statement, samples, and permissions before use.\n", new UTF8Encoding(false));
 
@@ -425,8 +425,8 @@ internal static class ProblemPackageExporter
         string provenanceSource = Path.Combine(options.TestDirectory, "ojgen_provenance.json");
         if (File.Exists(provenanceSource)) File.Copy(provenanceSource, Path.Combine(packageDirectory, "ojgen_provenance.json"), overwrite: false);
         if (options.AuditReport.Length > 0)
-            File.WriteAllText(Path.Combine(packageDirectory, "AUDIT_REPORT.txt"), options.AuditReport, new UTF8Encoding(false));
-        File.WriteAllText(Path.Combine(packageDirectory, "PACKAGE.txt"),
+            AtomicFile.WriteAllText(Path.Combine(packageDirectory, "AUDIT_REPORT.txt"), options.AuditReport, new UTF8Encoding(false));
+        AtomicFile.WriteAllText(Path.Combine(packageDirectory, "PACKAGE.txt"),
             $"Format: Kattis Problem Package 2025-09 (release candidate)\nProblem: {document.Name} [{document.Code}]\nOjGen version: {Util.Version}\nTests: {testInputs.Count}\nSamples: {manualTests.Count(test => test.IsSample)}\n",
             new UTF8Encoding(false));
         WritePackageChecksums(packageDirectory);

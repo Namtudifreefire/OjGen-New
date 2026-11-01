@@ -58,12 +58,12 @@ public partial class DifferentialResultWindow : Window
         try
         {
             string savedInput = failure.MinimizedInput.Length > 0 ? failure.MinimizedInput : failure.Input;
-            File.WriteAllText(dialog.FileName, savedInput, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(dialog.FileName, savedInput, new UTF8Encoding(false));
             if (failure.MinimizedInput.Length > 0)
-                File.WriteAllText(basePath + ".original.inp", failure.Input, new UTF8Encoding(false));
-            File.WriteAllText(basePath + ".ref.out", failure.ReferenceOutput, new UTF8Encoding(false));
-            File.WriteAllText(basePath + ".candidate.out", failure.CandidateOutput, new UTF8Encoding(false));
-            File.WriteAllText(basePath + ".diff.txt", failure.Reason, new UTF8Encoding(false));
+                AtomicFile.WriteAllText(basePath + ".original.inp", failure.Input, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(basePath + ".ref.out", failure.ReferenceOutput, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(basePath + ".candidate.out", failure.CandidateOutput, new UTF8Encoding(false));
+            AtomicFile.WriteAllText(basePath + ".diff.txt", failure.Reason, new UTF8Encoding(false));
             MessageBox.Show(this, "Đã lưu input và hai output để tái hiện lỗi.", "OjGen", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

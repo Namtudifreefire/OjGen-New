@@ -187,7 +187,7 @@ public static partial class TestInventoryService
                 .Append(',').Append(row.NumericMin?.ToString("R", CultureInfo.InvariantCulture) ?? "")
                 .Append(',').Append(row.NumericMax?.ToString("R", CultureInfo.InvariantCulture) ?? "")
                 .Append(',').Append(Q(row.DuplicateOf)).Append(',').Append(Q(row.Validation)).Append('\n');
-        File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
     }
 
     public static void WriteCsv(string directory) => ExportCsv(Path.Combine(directory, "TEST_INVENTORY.csv"), Read(directory));
@@ -259,9 +259,8 @@ public static partial class TestInventoryService
     }
     private static void SaveProvenance(string directory, JsonObject root)
     {
-        string path = Path.Combine(directory, "ojgen_provenance.json"), temp = path + ".tmp";
-        File.WriteAllText(temp, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
-        File.Move(temp, path, true);
+        string path = Path.Combine(directory, "ojgen_provenance.json");
+        AtomicFile.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
     }
 
     private static void RestoreFile(string path, byte[]? contents)
