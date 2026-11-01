@@ -23,6 +23,9 @@ public partial class DifferentialResultWindow : Window
         {
             sb.Append("=== Test ").Append(failure.TestIndex).Append(" ===\n").Append(failure.Reason).Append("\n");
             if (failure.Input.Length > 0) sb.Append("Input:\n").Append(ClipOutput(failure.Input)).Append('\n');
+            if (failure.MinimizedInput.Length > 0)
+                sb.Append("Input đã thu nhỏ (thử ").Append(failure.MinimizationTrials).Append(" bước):\n")
+                    .Append(ClipOutput(failure.MinimizedInput)).Append('\n');
             if (failure.ReferenceOutput.Length > 0) sb.Append("Output chuẩn:\n").Append(ClipOutput(failure.ReferenceOutput)).Append('\n');
             if (failure.CandidateOutput.Length > 0) sb.Append("Output cần thử:\n").Append(ClipOutput(failure.CandidateOutput)).Append('\n');
             sb.Append('\n');
@@ -54,7 +57,10 @@ public partial class DifferentialResultWindow : Window
         string basePath = Path.Combine(Path.GetDirectoryName(dialog.FileName) ?? ".", Path.GetFileNameWithoutExtension(dialog.FileName));
         try
         {
-            File.WriteAllText(dialog.FileName, failure.Input, new UTF8Encoding(false));
+            string savedInput = failure.MinimizedInput.Length > 0 ? failure.MinimizedInput : failure.Input;
+            File.WriteAllText(dialog.FileName, savedInput, new UTF8Encoding(false));
+            if (failure.MinimizedInput.Length > 0)
+                File.WriteAllText(basePath + ".original.inp", failure.Input, new UTF8Encoding(false));
             File.WriteAllText(basePath + ".ref.out", failure.ReferenceOutput, new UTF8Encoding(false));
             File.WriteAllText(basePath + ".candidate.out", failure.CandidateOutput, new UTF8Encoding(false));
             File.WriteAllText(basePath + ".diff.txt", failure.Reason, new UTF8Encoding(false));

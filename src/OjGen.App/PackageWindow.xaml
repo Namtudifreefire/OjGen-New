@@ -15,6 +15,12 @@
             <StackPanel Margin="16">
                 <TextBlock Text="Tên thư mục gói" Style="{StaticResource FieldLabel}" />
                 <TextBox x:Name="txtPackageName" />
+                <TextBlock Text="Định dạng xuất" Style="{StaticResource FieldLabel}" />
+                <ComboBox x:Name="cmbExportFormat" SelectedIndex="0">
+                    <ComboBoxItem Content="Gói riêng của OjGen" Tag="OjGen" />
+                    <ComboBoxItem Content="Kattis Problem Package 2025-09 (release candidate)" Tag="Icpc" />
+                </ComboBox>
+                <TextBlock Text="Định dạng 2025-09 là release candidate, chưa được hỗ trợ rộng. Gói này cần test, lời giải mã nguồn và validator Python độc lập; hãy kiểm tra judge đích trước khi nhập." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,3,3,6" />
                 <TextBlock Text="Thư mục cha" Style="{StaticResource FieldLabel}" />
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseParent_Click" Style="{StaticResource OutlineButton}" />

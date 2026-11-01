@@ -128,7 +128,7 @@ public partial class ProblemSetupWindow : Window
         var dialog = new OpenFileDialog
         {
             Title = "Chọn lời giải chuẩn",
-            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.exe|Tất cả file (*.*)|*.*",
+            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.java;*.cs;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.java;*.cs;*.exe|Tất cả file (*.*)|*.*",
             CheckFileExists = true,
         };
         if (dialog.ShowDialog(this) == true) txtSolution.Text = dialog.FileName;

@@ -72,6 +72,7 @@ internal sealed class CliAuditOptions
     public ulong? Seed { get; init; }
     public ulong? DifferentialSeed { get; init; }
     public JobSpec? GeneratedSpec { get; init; }
+    public IReadOnlyList<string> RequiredCoverageTags { get; init; } = Array.Empty<string>();
 }
 
 internal static class CliReleaseAudit
@@ -235,7 +236,7 @@ internal static class CliReleaseAudit
                 string input = Path.GetFullPath(inputs[i]);
                 var argv = prepared.Argv.Concat(new[] { input }).ToList();
                 RunResult valid = ProcessRunner.Run(argv, input, stdout, stderr, tempDir, limits, ct);
-                if (valid.Status != RunStatus.Ok)
+                if (valid.Status != RunStatus.Ok && !(valid.Status == RunStatus.RuntimeError && valid.ExitCode == 42))
                 {
                     report.Add(CliAuditLevel.Error, "Validator từ chối input hợp lệ", $"{Path.GetFileName(input)}: {ProcessRunner.StatusName(valid.Status)} — {valid.Message}");
                     return;
@@ -257,7 +258,7 @@ internal static class CliReleaseAudit
                 File.WriteAllText(invalidPath, invalid[i], new UTF8Encoding(false));
                 RunResult invalidRun = ProcessRunner.Run(prepared.Argv.Concat(new[] { invalidPath }).ToList(), invalidPath,
                     stdout, stderr, tempDir, limits, ct);
-                if (invalidRun.Status == RunStatus.Ok)
+                if (invalidRun.Status == RunStatus.Ok || invalidRun.ExitCode == 42)
                 {
                     report.Add(CliAuditLevel.Error, "Validator chấp nhận input sai", $"Biến thể sai #{i + 1} được validator chấp nhận.");
                     return;
@@ -296,9 +297,14 @@ internal static class CliReleaseAudit
                     options.CheckerTimeoutMs);
                 if (checker.Cancelled) { report.Cancelled = true; return; }
                 if (checker.Ok)
-                    report.Add(CliAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : options.Settings.TimeoutMs)} ms).");
+                {
+                    report.Add(CliAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : options.Settings.TimeoutMs)} ms).\nKết quả từng test:\n{checker.TestDetails}");
+                    if (checker.SelfTestWarning.Length > 0) report.Add(CliAuditLevel.Warning, "Tự thử checker", checker.SelfTestWarning);
+                    else if (checker.MalformedProbeRejected) report.Add(CliAuditLevel.Pass, "Tự thử checker", "Đã từ chối output sai định dạng mẫu.");
+                }
                 else
-                    report.Add(CliAuditLevel.Error, "Checker", checker.Error + (checker.Failed > 0 ? $"\nĐạt {checker.Passed}/{checker.Passed + checker.Failed} test." : ""));
+                    report.Add(CliAuditLevel.Error, "Checker", checker.Error + (checker.Failed > 0 ? $"\nĐạt {checker.Passed}/{checker.Passed + checker.Failed} test." : "") +
+                        (checker.Tests.Count > 0 ? "\nKết quả từng test:\n" + checker.TestDetails : ""));
             }
         }
 
@@ -473,7 +479,8 @@ internal static class CliReleaseAudit
                     {
                         new TestGroupSpec { Name = "Tất cả", TestCount = inputs.Count, Cfg = options.Config.Clone() },
                     };
-                    var coverage = CoverageAnalyzer.Analyze(options.Problem, inputs, groups, options.GeneratedSpec?.ManualTests ?? new List<ManualTestSpec>());
+                    var coverage = CoverageAnalyzer.Analyze(options.Problem, inputs, groups,
+                        options.GeneratedSpec?.ManualTests ?? new List<ManualTestSpec>(), options.RequiredCoverageTags);
                     foreach (string observation in coverage.Observations.Take(6))
                         report.Add(CliAuditLevel.Info, "Độ phủ: phép đo", observation);
                     report.Add(CliAuditLevel.Info, "Độ tin cậy độ phủ", coverage.Confidence);

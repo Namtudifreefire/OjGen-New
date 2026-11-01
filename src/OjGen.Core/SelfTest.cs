@@ -9,6 +9,16 @@ public static class SelfTest
 {
     private sealed record Case(string Problem, (string, long)[] Ints, (string, string)[] Texts, int Tests, string Note);
 
+    private sealed class CancelAfterFirstGeneratedInput(IJobLog inner, CancellationTokenSource cancellation) : IJobLog
+    {
+        public void Write(string text) => inner.Write(text);
+        public void Progress(string phase, int done, int total)
+        {
+            inner.Progress(phase, done, total);
+            if (phase.StartsWith("Sinh input", StringComparison.Ordinal) && done >= 1) cancellation.Cancel();
+        }
+    }
+
     private static Case C(string problem, (string, long)[] ints, (string, string)[] texts, int tests, string note) =>
         new(problem, ints, texts, tests, note);
 
@@ -32,6 +42,14 @@ public static class SelfTest
             for (int i = 0; i < 8; i++) crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
         }
         return ~crc;
+    }
+
+    private static string SelfTestRoot()
+    {
+        string? configured = Environment.GetEnvironmentVariable("OJGEN_SELFTEST_ROOT");
+        return Path.GetFullPath(string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(Path.GetTempPath(), "OjGen-selftest")
+            : configured);
     }
 
     /// <summary>Trả về 0 nếu mọi kiểm tra đạt, 1 nếu có thất bại.</summary>
@@ -149,6 +167,50 @@ public static class SelfTest
             var bipartite = MakeConfig(g, C("graph", new[] { ("minN", 3L), ("maxN", 3L), ("minM", 2L), ("maxM", 3L), ("bipartite", 1L) }, NoTexts, 0, ""));
             Check(g.ValidateInput("3 2\n1 2\n1 3\n", bipartite) == null, "graph: đồ thị hai phía hợp lệ được chấp nhận");
             Check(g.ValidateInput("3 3\n1 2\n2 3\n3 1\n", bipartite) != null, "graph: chu trình lẻ bị từ chối trong đồ thị hai phía");
+            var strong = MakeConfig(g, C("graph", new[] { ("minN", 3L), ("maxN", 3L), ("minM", 3L), ("maxM", 3L), ("directed", 1L), ("stronglyConnected", 1L) }, NoTexts, 0, ""));
+            Check(g.ValidateInput("3 3\n1 2\n2 3\n3 1\n", strong) == null, "graph: chu trình có hướng được chấp nhận là liên thông mạnh");
+            Check(g.ValidateInput("3 3\n1 2\n2 3\n1 3\n", strong) != null, "graph: liên thông yếu nhưng không mạnh bị từ chối");
+        }
+
+        {
+            string resumeDir = Path.Combine(SelfTestRoot(), "resume-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var p = Problems.Find("single_n")!;
+                var request = new GenerateRequest
+                {
+                    Problem = p,
+                    Cfg = p.DefaultConfig(),
+                    TestCount = 4,
+                    Seed = 20261101,
+                    OutDir = resumeDir,
+                    Prefix = "test",
+                };
+                using var cancellation = new CancellationTokenSource();
+                var first = Generator.GenerateInputs(request, new CancelAfterFirstGeneratedInput(NullLog.Instance, cancellation), cancellation.Token);
+                string checkpointPath = Path.Combine(resumeDir, ".ojgen_checkpoint.json");
+                Check(first.Cancelled && first.Inputs.Count == 1 && File.Exists(checkpointPath), "resume: dừng sau input đầu tiên và lưu checkpoint",
+                    $"Cancelled={first.Cancelled}, Inputs={first.Inputs.Count}, Checkpoint={File.Exists(checkpointPath)}, Error={first.Error}");
+                request.Resume = true;
+                var resumed = Generator.GenerateInputs(request, NullLog.Instance);
+                Check(resumed.Ok && resumed.Inputs.Count == 4, "resume: tiếp tục đúng bộ test từ checkpoint",
+                    $"Ok={resumed.Ok}, Inputs={resumed.Inputs.Count}, Error={resumed.Error}");
+                Generator.CompleteResumeCheckpoint(resumeDir);
+                Check(!File.Exists(checkpointPath), "resume: xóa checkpoint sau khi hoàn tất");
+
+                string planPath = Path.Combine(resumeDir, "reusable.ojplan.json");
+                TestPlanProfile.From(p, new[]
+                {
+                    new TestGroupSpec { Name = "Nhỏ", TestCount = 2, Seed = 19, Cfg = p.DefaultConfig(), CoverageTags = new List<string> { "small" } },
+                }, new[] { "small" }).Save(planPath);
+                var loadedPlan = TestPlanProfile.Load(planPath);
+                var loadedGroups = loadedPlan.ToGroups(p);
+                Check(loadedGroups.Count == 1 && loadedGroups[0].Name == "Nhỏ" && loadedGroups[0].TestCount == 2 &&
+                    loadedGroups[0].Seed == 19 && loadedGroups[0].CoverageTags.Contains("small") && loadedPlan.RequiredCoverageTags.Contains("small"),
+                    "test plan: lưu/mở nhóm, seed và nhãn độ phủ");
+            }
+            catch (Exception ex) { Check(false, "resume: kiểm tra khôi phục", ex.Message); }
+            finally { try { if (Directory.Exists(resumeDir)) Directory.Delete(resumeDir, recursive: true); } catch (Exception) { } }
         }
 
         var invalid = new List<Case>
@@ -236,9 +298,7 @@ public static class SelfTest
             samples.Add(Encoding.ASCII.GetBytes(txt.ToString()));
             Check(Crc32(Encoding.ASCII.GetBytes("123456789")) == 0xCBF43926u, "CRC-32 chuẩn");
 
-            string? tempRootValue = Environment.GetEnvironmentVariable("OJGEN_SELFTEST_ROOT");
-            string tempRoot = string.IsNullOrWhiteSpace(tempRootValue) ? Path.Combine(Path.GetTempPath(), "OjGen-selftest") : tempRootValue;
-            tempRoot = Path.GetFullPath(tempRoot);
+            string tempRoot = SelfTestRoot();
             Directory.CreateDirectory(tempRoot);
             string dir = Path.Combine(tempRoot, Guid.NewGuid().ToString("N"));
             try

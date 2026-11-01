@@ -8,6 +8,7 @@
 //   directed  = 1 : có hướng (u -> v)
 //   simple    = 1 : đồ thị đơn - không khuyên (u = v), không cạnh lặp
 //   connected = 1 : liên thông (có hướng: liên thông yếu), cần m >= n - 1
+//   stronglyConnected = 1 : đồ thị có hướng liên thông mạnh, cần m >= n
 //   dag       = 1 : đồ thị có hướng không chu trình
 //   bipartite = 1 : mỗi cạnh nối hai phía khác nhau
 //   weighted  = 1 : mỗi cạnh có trọng số w trong [minW, maxW]
@@ -29,6 +30,7 @@ public sealed class GraphProblem : Problem
         "m dòng tiếp: u v (hoặc u v w khi weighted = 1), đỉnh đánh số 1..n.\n" +
         "  directed = 1: có hướng.  simple = 1: không khuyên, không cạnh lặp.\n" +
         "  connected = 1: liên thông (có hướng: liên thông yếu), cần m >= n - 1.\n" +
+        "  stronglyConnected = 1: đồ thị có hướng liên thông mạnh, cần m >= n; không kết hợp DAG/hai phía.\n" +
         "  dag = 1: có hướng không chu trình.  bipartite = 1: cạnh chỉ nối hai phía.\n" +
         "  Đồ thị đơn vô hướng n đỉnh có tối đa n(n-1)/2 cạnh; có hướng tối đa n(n-1).\n" +
         "Ví dụ (vô hướng, có trọng số):\n  4 3\n  1 2 7\n  2 4 3\n  3 1 10\n";
@@ -42,6 +44,7 @@ public sealed class GraphProblem : Problem
         ParamSpec.Bool("directed", "Đồ thị có hướng?", false),
         ParamSpec.Bool("simple", "Đồ thị đơn (không khuyên, không cạnh lặp)?", true),
         ParamSpec.Bool("connected", "Bắt buộc liên thông?", false),
+        ParamSpec.Bool("stronglyConnected", "Đồ thị có hướng liên thông mạnh?", false, visibleWhen: c => c.B("directed")),
         ParamSpec.Bool("dag", "Đồ thị có hướng không chu trình (DAG)?", false, visibleWhen: c => c.B("directed")),
         ParamSpec.Bool("bipartite", "Đồ thị hai phía?", false),
         ParamSpec.Bool("weighted", "Có trọng số cạnh?", false),
@@ -94,6 +97,7 @@ public sealed class GraphProblem : Problem
     {
         lo = c.I("minM");
         if (c.B("connected")) lo = Math.Max(lo, n - 1);
+        if (c.B("stronglyConnected")) lo = Math.Max(lo, n);
         hi = c.I("maxM");
         if (c.B("simple"))
         {
@@ -111,6 +115,9 @@ public sealed class GraphProblem : Problem
         if (c.I("minM") > c.I("maxM")) return "minM phải <= maxM.";
         if (c.B("weighted") && c.I("minW") > c.I("maxW")) return "minW phải <= maxW.";
         if (c.B("dag") && !c.B("directed")) return "DAG cần bật directed = 1.";
+        if (c.B("stronglyConnected") && !c.B("directed")) return "Liên thông mạnh cần bật directed = 1.";
+        if (c.B("stronglyConnected") && c.B("dag")) return "Đồ thị liên thông mạnh không thể đồng thời là DAG (trừ self-loop, hiện không hỗ trợ).";
+        if (c.B("stronglyConnected") && c.B("bipartite")) return "Kết hợp stronglyConnected + bipartite hiện chưa được hỗ trợ; hãy tắt một ràng buộc.";
         for (long n = c.I("minN"); n <= c.I("maxN"); n++)
             if (EdgeRange(c, n, out _, out _)) return null;
         string why = "Không có số đỉnh n nào trong [minN, maxN] cho phép số cạnh trong [minM, maxM].";
@@ -126,7 +133,7 @@ public sealed class GraphProblem : Problem
 
     public override string Generate(Rng rng, Config c)
     {
-        if (c.B("dag") || c.B("bipartite")) return GenerateConstrained(rng, c);
+        if (c.B("dag") || c.B("bipartite") || c.B("stronglyConnected")) return GenerateConstrained(rng, c);
         bool directed = c.B("directed"), simple = c.B("simple"), connected = c.B("connected");
         // Chọn n sao cho tồn tại số cạnh hợp lệ.
         long n = 0, lo = 0, hi = -1;
@@ -234,7 +241,7 @@ public sealed class GraphProblem : Problem
     private string GenerateConstrained(Rng rng, Config c)
     {
         bool directed = c.B("directed"), simple = c.B("simple"), connected = c.B("connected");
-        bool dag = c.B("dag"), bipartite = c.B("bipartite");
+        bool dag = c.B("dag"), bipartite = c.B("bipartite"), stronglyConnected = c.B("stronglyConnected");
         long n = 0, lo = 0, hi = -1;
         for (int tries = 0; tries < 64; tries++)
         {
@@ -299,7 +306,14 @@ public sealed class GraphProblem : Problem
             return true;
         }
 
-        if (connected && vertexCount > 1)
+        if (stronglyConnected)
+        {
+            for (int i = 0; i < order.Count; i++)
+                if (!TryAdd(order[i], order[(i + 1) % order.Count]))
+                    throw new InvalidOperationException("Không thể tạo chu trình bảo đảm liên thông mạnh.");
+        }
+
+        if (connected && !stronglyConnected && vertexCount > 1)
         {
             var priorLeft = new List<int>();
             var priorRight = new List<int>();
@@ -446,6 +460,8 @@ public sealed class GraphProblem : Problem
         var colorAdj = bipartite ? new List<int>[(int)n + 1] : null;
         var dagAdj = dag ? new List<int>[(int)n + 1] : null;
         var indegree = dag ? new int[(int)n + 1] : null;
+        var strongAdj = c.B("stronglyConnected") ? new List<int>[(int)n + 1] : null;
+        var reverseStrongAdj = c.B("stronglyConnected") ? new List<int>[(int)n + 1] : null;
         long comps = n;
         for (long k = 1; k <= m; k++)
         {
@@ -475,8 +491,35 @@ public sealed class GraphProblem : Problem
                 (dagAdj![(int)u] ??= new List<int>()).Add((int)v);
                 indegree![(int)v]++;
             }
+            if (strongAdj != null)
+            {
+                (strongAdj[(int)u] ??= new List<int>()).Add((int)v);
+                (reverseStrongAdj![(int)v] ??= new List<int>()).Add((int)u);
+            }
         }
         if (c.B("connected") && comps != 1) return "Đồ thị không liên thông.";
+        if (strongAdj != null)
+        {
+            static int ReachableCount(List<int>?[] adjacency, int start, int vertexCount)
+            {
+                var visited = new bool[vertexCount + 1];
+                var stack = new Stack<int>();
+                visited[start] = true;
+                stack.Push(start);
+                int count = 0;
+                while (stack.Count > 0)
+                {
+                    int u = stack.Pop();
+                    count++;
+                    if (adjacency[u] is not { } neighbors) continue;
+                    foreach (int v in neighbors)
+                        if (!visited[v]) { visited[v] = true; stack.Push(v); }
+                }
+                return count;
+            }
+            if (ReachableCount(strongAdj, 1, (int)n) != n || ReachableCount(reverseStrongAdj!, 1, (int)n) != n)
+                return "Đồ thị không liên thông mạnh theo ràng buộc stronglyConnected.";
+        }
         if (bipartite)
         {
             var colors = Enumerable.Repeat(-1, (int)n + 1).ToArray();

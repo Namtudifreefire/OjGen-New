@@ -26,7 +26,7 @@ public partial class DifferentialSetupWindow : Window
         var dialog = new OpenFileDialog
         {
             Title = title,
-            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.exe|Tất cả file (*.*)|*.*",
+            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.java;*.cs;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.java;*.cs;*.exe|Tất cả file (*.*)|*.*",
             CheckFileExists = true,
         };
         if (dialog.ShowDialog(this) == true) target.Text = dialog.FileName;
@@ -65,6 +65,7 @@ public partial class DifferentialSetupWindow : Window
             ReferencePath = reference,
             CandidatePath = candidate,
             IgnoreWhitespace = chkIgnoreWhitespace.IsChecked == true,
+            MinimizeCounterexamples = chkMinimize.IsChecked == true,
         };
         DialogResult = true;
     }

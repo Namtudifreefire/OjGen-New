@@ -13,6 +13,8 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
             <TextBlock Text="Chia test thành nhóm cấu hình" FontSize="18" FontWeight="SemiBold" />
             <TextBlock Text="Mỗi nhóm có số lượng, seed và bộ ràng buộc riêng. OjGen sẽ đánh số file liên tục và ghi cấu hình từng nhóm vào ojgen_info.txt." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+            <TextBlock Text="Nhãn độ phủ bắt buộc (phân cách bằng dấu phẩy)" Margin="0,8,0,3" FontWeight="SemiBold" />
+            <TextBox x:Name="txtRequiredCoverageTags" ToolTip="Ví dụ: small, boundary, stress" />
         </StackPanel>
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
@@ -24,6 +26,7 @@
                     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                         <WrapPanel>
                             <Button Content="＋ Thêm" Click="BtnAdd_Click" Padding="9,6" />
+                            <Button Content="Thử thách" Click="BtnAdversarial_Click" Padding="9,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" ToolTip="Thêm nhóm biên nhỏ/lớn và trường hợp bất lợi phù hợp khuôn" />
                             <Button Content="Nhân bản" Click="BtnClone_Click" Padding="9,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" />
                             <Button Content="Xóa" Click="BtnDelete_Click" Padding="9,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" />
                         </WrapPanel>
@@ -49,6 +52,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -64,10 +68,15 @@
                         <TextBlock Grid.Column="0" Text="Seed riêng" VerticalAlignment="Center" />
                         <TextBox x:Name="txtSeed" Grid.Column="1" ToolTip="Để trống = OjGen tự tạo seed ổn định từ seed chính." TextChanged="Draft_TextChanged" />
                     </Grid>
-                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <Grid Grid.Row="2" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Nhãn nhóm" VerticalAlignment="Center" />
+                        <TextBox x:Name="txtCoverageTags" Grid.Column="1" ToolTip="Ví dụ: small, boundary, stress, adversarial" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="paramHost" Margin="0,0,8,0" />
                     </ScrollViewer>
-                    <TextBlock Grid.Row="3" x:Name="lblError" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                    <TextBlock Grid.Row="4" x:Name="lblError" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
                 </Grid>
             </Border>
         </Grid>

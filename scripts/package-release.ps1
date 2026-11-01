@@ -85,7 +85,7 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $packageDirectory 'CLI') | Out-Null
     Copy-Item -LiteralPath $guiExe -Destination (Join-Path $packageDirectory 'GUI/OjGen.exe')
     Copy-Item -LiteralPath $cliExe -Destination (Join-Path $packageDirectory 'CLI/ojgen.exe')
-    foreach ($file in @('README.md', 'CHANGELOG.md', 'LICENSE')) {
+    foreach ($file in @('README.md', 'CHANGELOG.md', 'PLUGIN_GUIDE.md', 'LICENSE')) {
         Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination (Join-Path $packageDirectory $file)
     }
     Copy-Item -LiteralPath $notesPath -Destination (Join-Path $packageDirectory "RELEASE_NOTES_v$Version.md")

@@ -1,11 +1,13 @@
 {
   "Version": 1,
   "ProblemId": "array",
+  "RequiredCoverageTags": ["small", "stress"],
   "Groups": [
     {
       "Name": "Nhỏ",
       "TestCount": 2,
       "Seed": 7,
+      "CoverageTags": ["small"],
       "Ints": { "minN": 1, "maxN": 5, "minVal": 1, "maxVal": 100, "mode": 0 },
       "Texts": {}
     },
@@ -13,6 +15,7 @@
       "Name": "Stress",
       "TestCount": 3,
       "Seed": null,
+      "CoverageTags": ["stress"],
       "Ints": { "minN": 50, "maxN": 100, "minVal": 1, "maxVal": 100, "mode": 0 },
       "Texts": {}
     }

@@ -28,6 +28,7 @@ public sealed class RunResult
     public RunStatus Status { get; set; } = RunStatus.StartFailed;
     public long ExitCode { get; set; }
     public long ElapsedMs { get; set; }
+    public ulong PeakMemoryBytes { get; set; }
     public string Message { get; set; } = "";
 }
 
@@ -241,14 +242,15 @@ public static class ProcessRunner
                 if (exceeded) { res.Status = RunStatus.OutputLimit; break; }
                 long ms = sw.ElapsedMilliseconds;
                 if (ms > lim.TimeoutMs) { res.Status = RunStatus.Timeout; break; }
-                if (lim.MemoryBytes > 0 && ms >= nextMemCheck)
+                if (ms >= nextMemCheck)
                 {
                     nextMemCheck = ms + 10;
                     try
                     {
                         p.Refresh();
                         memUsed = (ulong)Math.Max(p.PeakWorkingSet64, 0);
-                        if (memUsed > lim.MemoryBytes) { memExceeded = true; break; }
+                        if (memUsed > res.PeakMemoryBytes) res.PeakMemoryBytes = memUsed;
+                        if (lim.MemoryBytes > 0 && memUsed > lim.MemoryBytes) { memExceeded = true; break; }
                     }
                     catch (Exception) { }
                 }

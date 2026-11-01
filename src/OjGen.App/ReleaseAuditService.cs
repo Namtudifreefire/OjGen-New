@@ -259,7 +259,8 @@ internal static class ReleaseAuditService
                         },
                     };
                 IReadOnlyList<ManualTestSpec> coverageManual = coverageSpec?.ManualTests ?? manualTests.ToList();
-                var coverage = CoverageAnalyzer.Analyze(problem, inputs, coverageGroups, coverageManual);
+                var coverage = CoverageAnalyzer.Analyze(problem, inputs, coverageGroups, coverageManual,
+                    options.GeneratedSpec?.RequiredCoverageTags);
                 foreach (string observation in coverage.Observations.Take(6))
                     report.Add(ReleaseAuditLevel.Info, "Độ phủ: phép đo", observation);
                 report.Add(ReleaseAuditLevel.Info, "Độ tin cậy độ phủ", coverage.Confidence);
@@ -305,9 +306,14 @@ internal static class ReleaseAuditService
                         settings, Path.Combine(Path.GetTempPath(), "OjGen-ReleaseChecker"), log, ct, options.CheckerTimeoutMs);
                     if (checker.Cancelled) { report.Cancelled = true; return report; }
                     if (checker.Ok)
-                        report.Add(ReleaseAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : settings.TimeoutMs)} ms).");
+                    {
+                        report.Add(ReleaseAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : settings.TimeoutMs)} ms).\nKết quả từng test:\n{checker.TestDetails}");
+                        if (checker.SelfTestWarning.Length > 0) report.Add(ReleaseAuditLevel.Warning, "Tự thử checker", checker.SelfTestWarning);
+                        else if (checker.MalformedProbeRejected) report.Add(ReleaseAuditLevel.Pass, "Tự thử checker", "Đã từ chối output sai định dạng mẫu.");
+                    }
                     else
-                        report.Add(ReleaseAuditLevel.Error, "Checker", checker.Error + (checker.Failed > 0 ? $"\nĐạt {checker.Passed}/{checker.Passed + checker.Failed} test." : ""));
+                        report.Add(ReleaseAuditLevel.Error, "Checker", checker.Error + (checker.Failed > 0 ? $"\nĐạt {checker.Passed}/{checker.Passed + checker.Failed} test." : "") +
+                            (checker.Tests.Count > 0 ? "\nKết quả từng test:\n" + checker.TestDetails : ""));
                 }
             }
 
@@ -374,7 +380,7 @@ internal static class ReleaseAuditService
                 if (ct.IsCancellationRequested) { report.Cancelled = true; return; }
                 var argv = prepared.Argv.Concat(new[] { Path.GetFullPath(inputs[i]) }).ToList();
                 RunResult valid = ProcessRunner.Run(argv, Path.GetFullPath(inputs[i]), stdout, stderr, tempDir, limits, ct);
-                if (valid.Status != RunStatus.Ok)
+                if (valid.Status != RunStatus.Ok && !(valid.Status == RunStatus.RuntimeError && valid.ExitCode == 42))
                 {
                     report.Add(ReleaseAuditLevel.Error, "Validator từ chối input hợp lệ", $"{Path.GetFileName(inputs[i])}: {ProcessRunner.StatusName(valid.Status)} — {valid.Message}");
                     return;
@@ -398,7 +404,7 @@ internal static class ReleaseAuditService
                 File.WriteAllText(invalidPath, invalid[i], new UTF8Encoding(false));
                 var argv = prepared.Argv.Concat(new[] { invalidPath }).ToList();
                 RunResult invalidRun = ProcessRunner.Run(argv, invalidPath, stdout, stderr, tempDir, limits, ct);
-                if (invalidRun.Status == RunStatus.Ok)
+                if (invalidRun.Status == RunStatus.Ok || invalidRun.ExitCode == 42)
                 {
                     report.Add(ReleaseAuditLevel.Error, "Validator chấp nhận input sai", $"Biến thể sai #{i + 1} được validator chấp nhận (mã thoát 0).");
                     return;

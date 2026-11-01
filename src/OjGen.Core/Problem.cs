@@ -158,7 +158,7 @@ public abstract class Problem
 /// <summary>Danh sách các dạng bài. Thêm module mới: tạo lớp con của Problem rồi thêm vào All.</summary>
 public static class Problems
 {
-    public static IReadOnlyList<Problem> All { get; } = new Problem[]
+    private static readonly List<Problem> BuiltIns = new()
     {
         new SingleNProblem(),
         new TwoIntsProblem(),
@@ -182,10 +182,27 @@ public static class Problems
         // new MyProblem(),   // <- thêm module mới tại đây
     };
 
+    public static IReadOnlyList<Problem> All => BuiltIns;
+
+    public static bool Register(Problem problem)
+    {
+        if (problem == null || string.IsNullOrWhiteSpace(problem.Id) || BuiltIns.Any(item =>
+            string.Equals(item.Id, problem.Id, StringComparison.OrdinalIgnoreCase))) return false;
+        BuiltIns.Add(problem);
+        return true;
+    }
+
     public static Problem? Find(string id)
     {
         foreach (var p in All)
             if (p.Id == id) return p;
         return null;
     }
+}
+
+/// <summary>Plugin contract: return one or more Problem implementations from an extension assembly.</summary>
+public interface IOjGenProblemPlugin
+{
+    string Name { get; }
+    IEnumerable<Problem> CreateProblems();
 }

@@ -17,12 +17,15 @@ public partial class TestPlanWindow : Window
     private bool _switching;
 
     public IReadOnlyList<TestGroupSpec> Groups { get; private set; } = Array.Empty<TestGroupSpec>();
+    public IReadOnlyList<string> RequiredCoverageTags { get; private set; } = Array.Empty<string>();
 
-    public TestPlanWindow(Problem problem, Config baseConfig, int defaultCount, IReadOnlyList<TestGroupSpec> groups)
+    public TestPlanWindow(Problem problem, Config baseConfig, int defaultCount, IReadOnlyList<TestGroupSpec> groups,
+        IReadOnlyList<string>? requiredCoverageTags = null)
     {
         InitializeComponent();
         _problem = problem;
         _baseConfig = baseConfig.Clone();
+        txtRequiredCoverageTags.Text = string.Join(", ", requiredCoverageTags ?? Array.Empty<string>());
         if (groups.Count > 0)
             foreach (var group in groups) _groups.Add(group.Clone());
         else
@@ -75,9 +78,15 @@ public partial class TestPlanWindow : Window
             }
             seed = value;
         }
+        if (TestCoverageTags.Parse(txtCoverageTags.Text, out var coverageTags) is { } tagError)
+        {
+            lblError.Text = "⚠ " + tagError;
+            return false;
+        }
         _current.Name = name;
         _current.TestCount = (int)count;
         _current.Seed = seed;
+        _current.CoverageTags = coverageTags;
         _current.Cfg = _model.Effective();
         lstGroups.Items.Refresh();
         UpdateStatus();
@@ -92,6 +101,7 @@ public partial class TestPlanWindow : Window
         txtName.Text = group.Name;
         txtCount.Text = group.TestCount.ToString();
         txtSeed.Text = group.Seed is { } seed ? Util.LL(seed) : "";
+        txtCoverageTags.Text = string.Join(", ", group.CoverageTags ?? new List<string>());
         _model = new ConfigModel(_problem, group.Cfg);
         _form = new ParamForm(_model, paramHost);
         _form.Changed += OnModelChanged;
@@ -129,6 +139,25 @@ public partial class TestPlanWindow : Window
         };
         _groups.Add(group);
         lstGroups.SelectedItem = group;
+    }
+
+    private void BtnAdversarial_Click(object sender, RoutedEventArgs e)
+    {
+        if (!StoreCurrent()) return;
+        var presets = AdversarialTestPresets.Build(_problem, _current?.Cfg ?? _baseConfig, _groups.Select(group => group.Name));
+        if (presets.Count == 0)
+        {
+            lblError.Text = "Không có nhóm thử thách hợp lệ cho cấu hình hiện tại.";
+            return;
+        }
+        if (_groups.Count + presets.Count > Generator.MaxGroups)
+        {
+            lblError.Text = $"Chỉ có thể thêm {Generator.MaxGroups - _groups.Count} nhóm; hãy xóa bớt nhóm trước.";
+            return;
+        }
+        foreach (var preset in presets) _groups.Add(preset);
+        lstGroups.SelectedItem = presets[^1];
+        lblError.Text = $"Đã thêm {presets.Count} nhóm thử thách. Hãy rà lại giới hạn rồi chỉnh số test trước khi chạy.";
     }
 
     private void BtnDelete_Click(object sender, RoutedEventArgs e)
@@ -179,6 +208,8 @@ public partial class TestPlanWindow : Window
     private void BtnSavePlan_Click(object sender, RoutedEventArgs e)
     {
         if (!StoreCurrent()) return;
+        if (TestCoverageTags.Parse(txtRequiredCoverageTags.Text, out var requiredTags) is { } requiredError)
+        { lblError.Text = "⚠ " + requiredError; return; }
         long total = _groups.Sum(group => (long)group.TestCount);
         if (total > Generator.MaxTests) { lblError.Text = $"Tổng số test không được vượt quá {Generator.MaxTests}."; return; }
         var dialog = new SaveFileDialog
@@ -192,7 +223,7 @@ public partial class TestPlanWindow : Window
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            TestPlanProfile.From(_problem, _groups).Save(dialog.FileName);
+            TestPlanProfile.From(_problem, _groups, requiredTags).Save(dialog.FileName);
             lblError.Text = "Kế hoạch đã được lưu.";
         }
         catch (Exception ex) { lblError.Text = "Không lưu được kế hoạch: " + ex.Message; }
@@ -215,6 +246,7 @@ public partial class TestPlanWindow : Window
             _groups.Clear();
             foreach (var group in loaded) _groups.Add(group);
             _current = null;
+            txtRequiredCoverageTags.Text = string.Join(", ", profile.RequiredCoverageTags ?? new List<string>());
             lstGroups.SelectedIndex = 0;
             _switching = false;
             LoadGroup(_groups[0]);
@@ -240,6 +272,8 @@ public partial class TestPlanWindow : Window
     private void BtnFinish_Click(object sender, RoutedEventArgs e)
     {
         if (!StoreCurrent()) return;
+        if (TestCoverageTags.Parse(txtRequiredCoverageTags.Text, out var requiredTags) is { } requiredError)
+        { lblError.Text = "⚠ " + requiredError; return; }
         long total = _groups.Sum(group => (long)group.TestCount);
         if (total > Generator.MaxTests)
         {
@@ -247,6 +281,7 @@ public partial class TestPlanWindow : Window
             return;
         }
         Groups = _groups.Select(group => group.Clone()).ToList();
+        RequiredCoverageTags = requiredTags;
         DialogResult = true;
     }
 

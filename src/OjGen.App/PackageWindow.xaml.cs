@@ -59,8 +59,16 @@ public partial class PackageWindow : Window
         if (!int.TryParse(txtCheckerTimeout.Text.Trim(), out checkerTimeoutMs) || checkerTimeoutMs < 0 || checkerTimeoutMs > 3600000)
         { lblError.Text = "Timeout checker phải là số nguyên từ 0 đến 3600000 ms."; return; }
         if (txtCandidate.Text.Trim().Length > 0 && !File.Exists(txtCandidate.Text.Trim().Trim('"'))) { lblError.Text = "Không tìm thấy lời giải độc lập."; return; }
+        string exportFormat = cmbExportFormat.SelectedIndex == 1 ? "Icpc" : "OjGen";
+        if (exportFormat == "Icpc" && chkTests.IsChecked != true)
+        { lblError.Text = "Gói Kattis 2025-09 cần bật kèm test."; return; }
+        if (exportFormat == "Icpc" && chkSolution.IsChecked != true)
+        { lblError.Text = "Gói Kattis 2025-09 cần bật kèm lời giải chuẩn."; return; }
+        if (exportFormat == "Icpc" && !string.Equals(Path.GetExtension(txtValidator.Text.Trim().Trim('"')), ".py", StringComparison.OrdinalIgnoreCase))
+        { lblError.Text = "Gói Kattis 2025-09 cần chọn validator Python (.py)."; return; }
         Result = new ProblemPackageOptions
         {
+            ExportFormat = exportFormat,
             ParentDirectory = txtParent.Text.Trim(),
             PackageName = txtPackageName.Text.Trim(),
             TestDirectory = _testDirectory,

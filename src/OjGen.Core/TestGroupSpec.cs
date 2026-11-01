@@ -8,6 +8,7 @@ public sealed class TestGroupSpec
     /// <summary>Null = OjGen tạo seed ổn định từ seed chính của bộ test.</summary>
     public ulong? Seed { get; set; }
     public Config Cfg { get; set; } = new();
+    public List<string> CoverageTags { get; set; } = new();
 
     public TestGroupSpec Clone() => new()
     {
@@ -15,5 +16,6 @@ public sealed class TestGroupSpec
         TestCount = TestCount,
         Seed = Seed,
         Cfg = Cfg.Clone(),
+        CoverageTags = CoverageTags?.ToList() ?? new List<string>(),
     };
 }

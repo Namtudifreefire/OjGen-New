@@ -24,9 +24,11 @@ public sealed class JobSpec
     /// <summary>Vẫn nén khi bộ test chưa hoàn chỉnh.</summary>
     public bool ZipIncomplete { get; set; }
     public bool ForceRebuild { get; set; }
+    public bool ResumeGeneration { get; set; }
     public string ProblemName { get; set; } = "";
     public string ProblemCode { get; set; } = "";
     public List<TestGroupSpec> Groups { get; set; } = new();
+    public List<string> RequiredCoverageTags { get; set; } = new();
     public List<ManualTestSpec> ManualTests { get; set; } = new();
 }
 
@@ -262,6 +264,20 @@ public static class Job
         var result = new JobResult { OutDir = job.OutDir };
         ulong seed = job.Seed ?? Generator.RandomSeed();
         result.Seed = seed;
+        if (job.ResumeGeneration && job.SolutionPath.Trim().Length == 0)
+        {
+            int outputWidth = FileManager.TestNumberWidth(Math.Max(1, job.TestCount));
+            string? staleOutput = Enumerable.Range(1, Math.Max(1, job.TestCount))
+                .Select(index => Path.Combine(job.OutDir, FileManager.TestName(st.Prefix, index, outputWidth) + ".out"))
+                .FirstOrDefault(File.Exists);
+            if (staleOutput != null)
+            {
+                result.ExitCode = 2;
+                result.Error = $"Thư mục tiếp tục còn output {Path.GetFileName(staleOutput)} nhưng không chọn lời giải chuẩn; hãy dùng lại --solution hoặc xóa output cũ trước khi chạy input-only.";
+                log.Line("LỖI: " + result.Error);
+                return result;
+            }
+        }
         var groups = job.Groups.Count > 0
             ? job.Groups
             : new List<TestGroupSpec> { new() { Name = "Tất cả", TestCount = job.GeneratedTestCount > 0 ? job.GeneratedTestCount : Math.Max(1, job.TestCount - job.ManualTests.Count), Cfg = job.Cfg } };
@@ -289,7 +305,8 @@ public static class Job
             {
                 var group = groups[i];
                 ulong groupSeed = Generator.GroupSeed(seed, i, group.Seed);
-                log.Line($"    {i + 1}. {group.Name}: {group.TestCount} test, seed {Util.LL(groupSeed)}");
+                log.Line($"    {i + 1}. {group.Name}: {group.TestCount} test, seed {Util.LL(groupSeed)}" +
+                    (group.CoverageTags.Count > 0 ? $", nhãn: {string.Join(", ", group.CoverageTags)}" : ""));
                 log.Write(p.DescribeConfig(group.Cfg));
             }
         }
@@ -311,6 +328,7 @@ public static class Job
             Seed = seed,
             OutDir = job.OutDir,
             Prefix = st.Prefix,
+            Resume = job.ResumeGeneration,
             Groups = job.Groups,
             ManualTests = job.ManualTests,
         };
@@ -327,7 +345,7 @@ public static class Job
         result.InputCount = g.Inputs.Count;
         log.Line($"Đã tạo {g.Inputs.Count} file .inp (mỗi file đã được kiểm tra đúng định dạng và giới hạn).");
         foreach (var w in g.Warnings) log.Line("  ! " + w);
-        CoverageReport coverage = CoverageAnalyzer.Analyze(p, g.Inputs, groups, job.ManualTests);
+        CoverageReport coverage = CoverageAnalyzer.Analyze(p, g.Inputs, groups, job.ManualTests, job.RequiredCoverageTags);
         result.Coverage = coverage;
         log.Line("");
         log.Line("--- Độ phủ test và gợi ý ---");
@@ -358,7 +376,8 @@ public static class Job
             else
             {
                 log.Line($"Chạy lời giải trên {g.Inputs.Count} test (timeout {st.TimeoutMs} ms/test):");
-                rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct);
+                try { rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct); }
+                finally { SolutionRunner.Cleanup(ps); }
                 for (int i = 0; i < Math.Min(job.ManualTests.Count, g.Inputs.Count); i++)
                 {
                     var manual = job.ManualTests[i];
@@ -390,6 +409,8 @@ public static class Job
         if (job.ProblemCode.Length > 0) info.Append("Mã bài        : ").Append(job.ProblemCode).Append('\n');
         info.Append("Số test       : ").Append(job.TestCount).Append('\n');
         info.Append("Seed          : ").Append(Util.LL(seed)).Append('\n');
+        if (job.RequiredCoverageTags.Count > 0)
+            info.Append("Nhãn độ phủ bắt buộc: ").Append(string.Join(", ", job.RequiredCoverageTags)).Append('\n');
         info.Append("Lời giải chuẩn: ").Append(solutionShown).Append('\n');
         if (job.ManualTests.Count > 0)
         {
@@ -412,6 +433,7 @@ public static class Job
                 info.Append("Nhóm ").Append(i + 1).Append(": ").Append(group.Name)
                     .Append(" ( ").Append(group.TestCount).Append(" test, seed ")
                     .Append(Util.LL(Generator.GroupSeed(seed, i, group.Seed))).Append(" )\n")
+                    .Append(group.CoverageTags.Count > 0 ? "Nhãn độ phủ: " + string.Join(", ", group.CoverageTags) + "\n" : "")
                     .Append(p.DescribeConfig(group.Cfg));
             }
         }
@@ -434,10 +456,24 @@ public static class Job
             log.Line($"  {rep.Ok}/{rep.Total} test có output, thời gian chạy lâu nhất {rep.MaxMs} ms.");
         else if (status == SetStatus.Incomplete && rep.Total > 0)
             log.Line($"  {rep.Ok}/{rep.Total} test có output.");
+        if (rep.PeakMemoryBytes > 0)
+            log.Line($"  Bộ nhớ đỉnh đo được: khoảng {Util.FmtBytes(rep.PeakMemoryBytes)} (đo theo working set của tiến trình).");
+        foreach (var metric in rep.Metrics.OrderByDescending(item => item.ElapsedMs).Take(5))
+            log.Line($"  Chậm: {metric.Name} · {metric.ElapsedMs} ms" + (metric.PeakMemoryBytes > 0 ? $" · {Util.FmtBytes(metric.PeakMemoryBytes)}" : ""));
         log.Line($"  Thư mục: {job.OutDir}  (thông tin chi tiết: {FileManager.InfoFile})");
 
-        if (!cancelled && DecideZip(job.Zip, status, job.ZipIncomplete, log) && ZipTestFolder(job.OutDir, st, log, out var zp))
-            result.ZipPath = zp;
+        bool shouldZip = !cancelled && DecideZip(job.Zip, status, job.ZipIncomplete, log);
+        if (shouldZip)
+        {
+            if (ZipTestFolder(job.OutDir, st, log, out var zp)) result.ZipPath = zp;
+            else
+            {
+                result.ExitCode = 2;
+                result.Error = "Không tạo hoặc xác minh được ZIP test.";
+                return result;
+            }
+        }
+        if (!cancelled) Generator.CompleteResumeCheckpoint(job.OutDir);
         result.ExitCode = status == SetStatus.Incomplete ? 1 : 0;
         return result;
     }
@@ -470,7 +506,8 @@ public static class Job
         else
         {
             RememberSolution(st, solution, "");
-            rep = SolutionRunner.ProduceOutputs(ps.Argv, inputs, st, st.WorkDir, log, ct);
+            try { rep = SolutionRunner.ProduceOutputs(ps.Argv, inputs, st, st.WorkDir, log, ct); }
+            finally { SolutionRunner.Cleanup(ps); }
             foreach (var w in rep.Warnings) log.Line("  ! " + w);
             if (rep.Failures.Count > 0) PrintFailures(rep, log);
             status = rep.Failures.Count == 0 && !rep.Cancelled ? SetStatus.Complete : SetStatus.Incomplete;
@@ -482,6 +519,14 @@ public static class Job
         info.Append("Trạng thái    : ").Append(StatusLine(status)).Append('\n');
         if (note.Length > 0) info.Append(note).Append('\n');
         if (rep.Failures.Count > 0) info.Append("  Test lỗi:\n").Append(FailureSummary(rep));
+        if (rep.Metrics.Count > 0)
+        {
+            info.Append("Đo hiệu năng (working set; xấp xỉ):\n  Bộ nhớ đỉnh: ").Append(Util.FmtBytes(rep.PeakMemoryBytes))
+                .Append("\n  Test chậm nhất:\n");
+            foreach (var metric in rep.Metrics.OrderByDescending(item => item.ElapsedMs).Take(10))
+                info.Append("    ").Append(metric.Name).Append(": ").Append(metric.ElapsedMs).Append(" ms; ")
+                    .Append(Util.FmtBytes(metric.PeakMemoryBytes)).Append("; ").Append(ProcessRunner.StatusName(metric.Status)).Append('\n');
+        }
         FileManager.WriteFile(Path.Combine(dir, FileManager.InfoFile), info.ToString());
         if (FileManager.WriteTestChecksumManifest(dir, out int checksumCount, out string? checksumError))
             log.Line($"Đã cập nhật SHA-256 cho {checksumCount} file test.");

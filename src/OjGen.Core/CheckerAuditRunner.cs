@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace OjGen.Core;
 
 public sealed class CheckerAuditResult
@@ -7,7 +9,16 @@ public sealed class CheckerAuditResult
     public int Passed { get; init; }
     public int Failed { get; init; }
     public string Error { get; init; } = "";
+    public string SelfTestWarning { get; init; } = "";
+    public bool MalformedProbeRejected { get; init; }
+    public List<CheckerTestResult> Tests { get; init; } = new();
+
+    public string TestDetails => string.Join(Environment.NewLine, Tests.Select(test =>
+        $"{test.TestName}: {(test.Accepted ? "ĐẠT" : "LỖI")} ({test.Status}, {test.ElapsedMs} ms)" +
+        (test.Detail.Length > 0 ? " — " + test.Detail : "")));
 }
+
+public sealed record CheckerTestResult(string TestName, bool Accepted, long ElapsedMs, string Status, string Detail = "");
 
 /// <summary>Runs a checker on official input/output pairs without invoking a shell.</summary>
 public static class CheckerAuditRunner
@@ -77,6 +88,7 @@ public static class CheckerAuditRunner
 
             int passed = 0;
             var failures = new List<string>();
+            var testResults = new List<CheckerTestResult>(inputs.Count);
             int limit = Math.Clamp(timeoutMs > 0 ? timeoutMs : settings.TimeoutMs, 1, 3600000);
             var runLimits = new RunLimits
             {
@@ -86,43 +98,69 @@ public static class CheckerAuditRunner
             };
             string stdout = Path.Combine(tempDir, "checker.stdout");
             string stderr = Path.Combine(tempDir, "checker.stderr");
+            string BuildArg(string value, string input, string contestantOutput, string answer, string testName) => value
+                .Replace("{input}", input, StringComparison.Ordinal)
+                .Replace("{output}", contestantOutput, StringComparison.Ordinal)
+                .Replace("{answer}", answer, StringComparison.Ordinal)
+                .Replace("{test}", testName, StringComparison.Ordinal);
             for (int i = 0; i < inputs.Count; i++)
             {
                 if (ct.IsCancellationRequested)
-                    return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy checker." };
+                    return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy checker.", Tests = testResults };
                 string input = Path.GetFullPath(inputs[i]);
                 string output = Path.GetFullPath(Path.ChangeExtension(input, ".out"));
                 if (!File.Exists(output))
                 {
-                    failures.Add($"{Path.GetFileName(input)}: thiếu output .out.");
+                    string missing = $"{Path.GetFileName(input)}: thiếu output .out.";
+                    failures.Add(missing);
+                    testResults.Add(new CheckerTestResult(Path.GetFileName(input), false, 0, "Thiếu output", "Không tìm thấy file .out"));
+                    log.Progress("Chạy checker", i + 1, inputs.Count);
                     continue;
                 }
                 string testName = Path.GetFileNameWithoutExtension(input);
-                string Replace(string value) => value
-                    .Replace("{input}", input, StringComparison.Ordinal)
-                    .Replace("{output}", output, StringComparison.Ordinal)
-                    .Replace("{answer}", output, StringComparison.Ordinal)
-                    .Replace("{test}", testName, StringComparison.Ordinal);
-                var argv = prepared.Argv.Concat(template.Select(Replace)).ToList();
+                var argv = prepared.Argv.Concat(template.Select(value => BuildArg(value, input, output, output, testName))).ToList();
                 RunResult run = ProcessRunner.Run(argv, null, stdout, stderr, tempDir, runLimits, ct);
                 if (run.Status == RunStatus.Cancelled)
-                    return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy checker." };
+                    return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy checker.", Tests = testResults };
                 if (run.Status == RunStatus.Ok)
                 {
                     passed++;
+                    testResults.Add(new CheckerTestResult(Path.GetFileName(input), true, run.ElapsedMs, "Chấp nhận"));
                 }
                 else
                 {
                     string detail = string.Join("\n", new[] { FileManager.ReadText(stdout).Trim(), FileManager.ReadText(stderr).Trim() }.Where(s => s.Length > 0));
                     if (detail.Length > 500) detail = detail[..500] + "…";
+                    string failure = (run.Message.Length > 0 ? run.Message + (detail.Length > 0 ? "\n" : "") : "") + detail;
                     failures.Add($"{Path.GetFileName(input)}: {ProcessRunner.StatusName(run.Status)} (exit {run.ExitCode}, {run.ElapsedMs} ms)" +
-                        (run.Message.Length > 0 ? " — " + run.Message : "") + (detail.Length > 0 ? "\n" + detail : ""));
+                        (failure.Length > 0 ? " — " + failure : ""));
+                    testResults.Add(new CheckerTestResult(Path.GetFileName(input), false, run.ElapsedMs,
+                        ProcessRunner.StatusName(run.Status) + " / exit " + run.ExitCode, failure));
                 }
                 log.Progress("Chạy checker", i + 1, inputs.Count);
             }
             string error = failures.Count == 0 ? "" : string.Join("\n", failures.Take(10)) +
                 (failures.Count > 10 ? $"\n… còn {failures.Count - 10} test checker lỗi." : "");
-            return new CheckerAuditResult { Ok = failures.Count == 0, Passed = passed, Failed = failures.Count, Error = error };
+            string selfTestWarning = "";
+            if (failures.Count == 0 && inputs.Count > 0 && !ct.IsCancellationRequested)
+            {
+                string firstInput = Path.GetFullPath(inputs[0]);
+                string official = Path.GetFullPath(Path.ChangeExtension(firstInput, ".out"));
+                string malformedOutput = Path.Combine(tempDir, "checker.malformed.out");
+                File.WriteAllText(malformedOutput, "OJGEN_INVALID_OUTPUT\n", new UTF8Encoding(false));
+                string testName = Path.GetFileNameWithoutExtension(firstInput);
+                var probeArgs = prepared.Argv.Concat(template.Select(value => BuildArg(value, firstInput, malformedOutput, official, testName))).ToList();
+                RunResult probe = ProcessRunner.Run(probeArgs, null, stdout, stderr, tempDir, runLimits, ct);
+                if (probe.Status == RunStatus.Cancelled)
+                    return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi tự thử checker.", Tests = testResults };
+                if (probe.Status == RunStatus.Ok)
+                    selfTestWarning = "Checker chấp nhận cả output sai định dạng mẫu; hãy kiểm tra checker và thứ tự {output}/{answer}. Kết quả này chỉ là phép thử sơ bộ.";
+                else if (probe.Status == RunStatus.RuntimeError && probe.ExitCode != 0)
+                    return new CheckerAuditResult { Ok = true, Passed = passed, Failed = 0, MalformedProbeRejected = true, Tests = testResults };
+                else
+                    selfTestWarning = $"Không kết luận được phép tự thử checker ({ProcessRunner.StatusName(probe.Status)}); kiểm tra checker thủ công.";
+            }
+            return new CheckerAuditResult { Ok = failures.Count == 0, Passed = passed, Failed = failures.Count, Error = error, SelfTestWarning = selfTestWarning, Tests = testResults };
         }
         catch (Exception ex)
         {

@@ -142,7 +142,8 @@ public static class CoverageAnalyzer
     }
 
     public static CoverageReport Analyze(Problem problem, IReadOnlyList<string> inputs,
-                                         IReadOnlyList<TestGroupSpec> groups, IReadOnlyList<ManualTestSpec> manualTests)
+                                         IReadOnlyList<TestGroupSpec> groups, IReadOnlyList<ManualTestSpec> manualTests,
+                                         IReadOnlyList<string>? requiredCoverageTags = null)
     {
         var report = new CoverageReport();
         var sizes = new List<long>(inputs.Count);
@@ -159,6 +160,9 @@ public static class CoverageAnalyzer
         bool stress = HasWord(groupNames, StressWords);
         bool random = HasWord(groupNames, RandomWords);
         int sampleCount = manualTests.Count(test => test.IsSample);
+        var observedTags = groups.SelectMany(group => group.CoverageTags ?? new List<string>())
+            .Select(tag => tag.Trim().ToLowerInvariant()).Where(tag => tag.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         report.Summary = $"{inputs.Count} input · {groups.Count} nhóm cấu hình · {manualTests.Count} test nhập tay · {sampleCount} sample";
         if (sizes.Count > 0)
@@ -171,9 +175,12 @@ public static class CoverageAnalyzer
             if (measurement.Value.Count == 0) continue;
             report.Observations.Add($"Giá trị {measurement.Key} đo từ input: {Util.LL(measurement.Value.Min())}–{Util.LL(measurement.Value.Max())} ({measurement.Value.Count} giá trị).");
         }
+        if (observedTags.Count > 0)
+            report.Observations.Add("Nhãn độ phủ đã khai báo: " + string.Join(", ", observedTags.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)) + ".");
         report.Confidence = measurements.Count > 0
             ? "Có đo kích thước thực tế ở các định dạng nhận diện được; các nhận định còn lại là heuristic"
             : "Heuristic (không nhận diện được trường kích thước của input)";
+        if (observedTags.Count > 0) report.Confidence += "; nhãn do người dùng khai báo";
         if (small) report.Observations.Add("Có nhóm được đặt tên theo test nhỏ.");
         if (boundary) report.Observations.Add("Có nhóm được đặt tên theo trường hợp biên.");
         if (random) report.Observations.Add("Có nhóm ngẫu nhiên.");
@@ -193,6 +200,13 @@ public static class CoverageAnalyzer
                 report.Observations.Add($"{param.DisplayLabel}: {string.Join(", ", present.Select(option => option.Label))}.");
             if (missing.Count > 0 && report.Suggestions.Count < 8)
                 report.Suggestions.Add($"Thêm nhóm cho '{param.DisplayLabel}': {string.Join(", ", missing.Select(option => option.Label))}.");
+        }
+
+        foreach (string requiredTag in (requiredCoverageTags ?? Array.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (observedTags.Contains(requiredTag)) continue;
+            if (report.Suggestions.Count < 8)
+                report.Suggestions.Add($"Thiếu nhóm test có nhãn độ phủ bắt buộc '{requiredTag}'.");
         }
 
         var configs = groups.Select(group => group.Cfg).Concat(manualTests.Select(test => test.Cfg)).ToList();

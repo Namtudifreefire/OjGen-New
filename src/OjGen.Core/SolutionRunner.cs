@@ -15,11 +15,14 @@ public sealed class PreparedSolution
     public bool Compiled { get; set; }
     /// <summary>Dùng lại bản biên dịch trước (mã nguồn không đổi).</summary>
     public bool Cached { get; set; }
+    /// <summary>Temporary output created only for the single-file C# runner.</summary>
+    public string TemporaryDirectory { get; set; } = "";
     /// <summary>Lỗi (kèm log biên dịch nếu có).</summary>
     public string Error { get; set; } = "";
 }
 
 public sealed record TestFailure(int Index, string Name, string Reason);
+public sealed record TestRunMetric(int Index, string Name, long ElapsedMs, ulong PeakMemoryBytes, RunStatus Status);
 
 public sealed class OutputReport
 {
@@ -28,12 +31,22 @@ public sealed class OutputReport
     public List<TestFailure> Failures { get; } = new();
     public List<string> Warnings { get; } = new();
     public long MaxMs { get; set; }
+    public ulong PeakMemoryBytes { get; set; }
+    public List<TestRunMetric> Metrics { get; } = new();
     public bool Cancelled { get; set; }
 }
 
 public static class SolutionRunner
 {
     private static readonly string[] CppExts = { ".cpp", ".cc", ".cxx", ".c++", ".cp" };
+
+    public static void Cleanup(PreparedSolution solution)
+    {
+        string path = solution.TemporaryDirectory;
+        solution.TemporaryDirectory = "";
+        if (path.Length == 0) return;
+        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch (Exception) { }
+    }
 
     /// <summary>Tìm chương trình trong PATH (thêm .exe trên Windows). null nếu không thấy.</summary>
     public static string? FindOnPath(string name)
@@ -148,6 +161,54 @@ public static class SolutionRunner
             return ps;
         }
 
+        if (ext == ".java")
+        {
+            string? java = FindOnPath("java");
+            if (java == null) { ps.Error = "Không tìm thấy Java runtime (java) trong PATH."; return ps; }
+            ps.Ok = true;
+            ps.Argv = new List<string> { java, src };
+            log.Line("Chạy lời giải Java source launcher: " + src);
+            return ps;
+        }
+
+        if (ext == ".cs")
+        {
+            string? dotnet = FindOnPath("dotnet");
+            if (dotnet == null) { ps.Error = "Không tìm thấy .NET SDK (dotnet) trong PATH để biên dịch lời giải C# đơn file."; return ps; }
+            string buildDir = Path.GetFullPath(Path.Combine(workDir, "ojgen-csharp-" + Guid.NewGuid().ToString("N")));
+            try
+            {
+                Directory.CreateDirectory(buildDir);
+                string sourceName = "Program.cs";
+                File.Copy(src, Path.Combine(buildDir, sourceName));
+                File.WriteAllText(Path.Combine(buildDir, "Solution.csproj"),
+                    "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable></PropertyGroup></Project>",
+                    new UTF8Encoding(false));
+                string buildLog = Path.Combine(buildDir, "build.log");
+                var build = ProcessRunner.Run(new[] { dotnet, "build", "Solution.csproj", "-c", "Release", "--nologo", "-o", "publish" },
+                    null, buildLog, buildLog, buildDir, new RunLimits { TimeoutMs = st.CompileTimeoutSec * 1000, MaxOutputBytes = 32UL << 20 }, ct);
+                if (build.Status != RunStatus.Ok || !File.Exists(Path.Combine(buildDir, "publish", "Solution.dll")))
+                {
+                    ps.Error = "BIÊN DỊCH C# THẤT BẠI" + (build.Status == RunStatus.Timeout ? $": quá {st.CompileTimeoutSec} giây." : "") +
+                        (File.Exists(buildLog) ? "\n" + FirstLines(File.ReadAllText(buildLog), 30) : "\n" + build.Message);
+                    try { Directory.Delete(buildDir, true); } catch (Exception) { }
+                    return ps;
+                }
+                ps.Ok = true;
+                ps.Compiled = true;
+                ps.Argv = new List<string> { dotnet, Path.Combine(buildDir, "publish", "Solution.dll") };
+                ps.TemporaryDirectory = buildDir;
+                log.Line($"Biên dịch C# thành công ({build.ElapsedMs} ms).");
+                return ps;
+            }
+            catch (Exception ex)
+            {
+                try { if (Directory.Exists(buildDir)) Directory.Delete(buildDir, recursive: true); } catch (Exception) { }
+                ps.Error = "Không chuẩn bị được lời giải C#: " + ex.Message;
+                return ps;
+            }
+        }
+
         if (Array.IndexOf(CppExts, ext) < 0)
         {
             bool runnable;
@@ -164,7 +225,7 @@ public static class SolutionRunner
             }
             if (!runnable)
             {
-                ps.Error = "File lời giải phải là mã nguồn C++ (.cpp, .cc, .cxx), Python (.py) hoặc chương trình đã biên dịch" +
+                ps.Error = "File lời giải phải là C++ (.cpp), Python (.py), Java (.java), C# (.cs) hoặc chương trình đã biên dịch" +
                            (OperatingSystem.IsWindows() ? " (.exe)" : "") + ". Nhận được: " + Path.GetFileName(src);
                 return ps;
             }
@@ -282,6 +343,8 @@ public static class SolutionRunner
             RunResult rr = ProcessRunner.Run(argv, Path.GetFullPath(inp), tmpOut, tmpErr, workDir, lim, ct, unixLimits: true);
             if (rr.Status == RunStatus.Cancelled) { log.Line("ĐÃ HỦY"); rep.Cancelled = true; break; }
             rep.MaxMs = Math.Max(rep.MaxMs, rr.ElapsedMs);
+            rep.PeakMemoryBytes = Math.Max(rep.PeakMemoryBytes, rr.PeakMemoryBytes);
+            rep.Metrics.Add(new TestRunMetric(i + 1, name, rr.ElapsedMs, rr.PeakMemoryBytes, rr.Status));
             string reason = "";
             if (rr.Status == RunStatus.Ok)
             {

@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "ProblemId": "single_n",
+  "Name": "Hồ sơ hồi quy",
+  "Code": "profile-regression",
+  "SolutionPath": "",
+  "Ints": {
+    "minVal": 3,
+    "maxVal": 9
+  },
+  "Texts": {}
+}

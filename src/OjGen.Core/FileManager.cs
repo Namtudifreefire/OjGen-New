@@ -181,7 +181,7 @@ public static class FileManager
         }
     }
 
-    /// <summary>Xóa CHỈ các file .inp, .out, thông tin ojgen và manifest SHA-256 (không đệ quy). -1 nếu lỗi.</summary>
+    /// <summary>Xóa file test, thông tin, checksum và checkpoint sinh (không đệ quy). -1 nếu lỗi.</summary>
     public static long ClearTestFiles(string dir, out string? err)
     {
         err = null;
@@ -191,6 +191,8 @@ public static class FileManager
         if (File.Exists(info)) files.Add(info);
         string checksums = Path.Combine(dir, ChecksumFile);
         if (File.Exists(checksums)) files.Add(checksums);
+        string checkpoint = Path.Combine(dir, ".ojgen_checkpoint.json");
+        if (File.Exists(checkpoint)) files.Add(checkpoint);
         long removed = 0;
         foreach (var f in files)
         {

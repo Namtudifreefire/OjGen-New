@@ -114,6 +114,7 @@ public static class JobPlanner
         public string ProblemName { get; set; } = "";
         public string ProblemCode { get; set; } = "";
         public IReadOnlyList<TestGroupSpec> Groups { get; set; } = Array.Empty<TestGroupSpec>();
+        public IReadOnlyList<string> RequiredCoverageTags { get; set; } = Array.Empty<string>();
         public IReadOnlyList<ManualTestSpec> ManualTests { get; set; } = Array.Empty<ManualTestSpec>();
     }
 
@@ -160,6 +161,8 @@ public static class JobPlanner
         }
         if (o.ManualTests.Count > Generator.MaxTests)
             return $"Không được vượt quá {Generator.MaxTests} test nhập tay.";
+        if (TestCoverageTags.Parse(string.Join(',', o.RequiredCoverageTags), out var requiredTags) is { } tagError)
+            return tagError;
         var manualNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var manual in o.ManualTests)
         {
@@ -189,6 +192,7 @@ public static class JobPlanner
             ProblemName = o.ProblemName.Trim(),
             ProblemCode = problemCode,
             Groups = o.Groups.Select(g => g.Clone()).ToList(),
+            RequiredCoverageTags = requiredTags,
             ManualTests = o.ManualTests.Select(test => test.Clone()).ToList(),
         };
         return null;

@@ -30,6 +30,16 @@ public partial class App : Application
         };
         TaskScheduler.UnobservedTaskException += (_, args) => args.SetObserved();
 
+        try
+        {
+            string appPlugins = Path.Combine(AppContext.BaseDirectory, "plugins");
+            string userPlugins = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OjGen", "plugins");
+            foreach (string message in ProblemPluginLoader.LoadFrom(appPlugins).Concat(ProblemPluginLoader.LoadFrom(userPlugins)))
+                if (!message.Contains("Không tìm thấy plugin", StringComparison.OrdinalIgnoreCase))
+                    SettingsWarning = (SettingsWarning == null ? "" : SettingsWarning + Environment.NewLine) + "Plugin: " + message;
+        }
+        catch (Exception ex) { SettingsWarning = "Không nạp được plugin: " + ex.Message; }
+
         try { LoadSettings(); }
         catch (Exception ex) { SettingsWarning = "Không đọc được cấu hình: " + ex.Message; }
         try { ThemeService.Initialize(); } catch (Exception) { }
@@ -54,7 +64,8 @@ public partial class App : Application
         string path = Settings.DefaultUserPath;
         bool existed = File.Exists(path);
         AppSettings = Settings.Load(path, out string? warn);
-        SettingsWarning = warn;
+        if (!string.IsNullOrWhiteSpace(warn))
+            SettingsWarning = (SettingsWarning == null ? "" : SettingsWarning + Environment.NewLine) + warn;
         string docs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OjGen");
         // Mặc định (chưa có file cấu hình) hoặc đường dẫn tương đối: đặt trong Documents\OjGen để người dùng dễ tìm.
         if (!existed) AppSettings.OutputRoot = Path.Combine(docs, "output");

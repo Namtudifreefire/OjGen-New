@@ -54,11 +54,39 @@ diff -r -x ojgen_info.txt -x '*.zip' "$T/custom" "$T/custom_again" > /dev/null &
 
 echo "== Lưu và tái sử dụng kế hoạch nhóm"
 expect_exit 0 "--plan sinh đúng số test của các nhóm" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --seed 2024 --out "$T/plan" --no-zip
-[[ $(count "$T/plan" .inp) -eq 5 ]] && grep -q "Nhỏ" "$T/plan/ojgen_info.txt" && grep -q "Stress" "$T/plan/ojgen_info.txt" && ok "plan: nhóm, thứ tự và tổng test được áp dụng" || bad "plan: thiếu nhóm hoặc sai số test"
+[[ $(count "$T/plan" .inp) -eq 5 ]] && grep -q "Nhỏ" "$T/plan/ojgen_info.txt" && grep -q "Stress" "$T/plan/ojgen_info.txt" && grep -q "Nhãn độ phủ bắt buộc: small, stress" "$T/plan/ojgen_info.txt" && ok "plan: nhóm, thứ tự, nhãn và tổng test được áp dụng" || bad "plan: thiếu nhóm, nhãn hoặc sai số test"
 expect_exit 0 "--plan tái lập cùng seed" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --seed 2024 --out "$T/plan_again" --no-zip
 diff -r -x ojgen_info.txt "$T/plan" "$T/plan_again" > /dev/null && ok "plan: nạp lại cho bộ input tái lập" || bad "plan: dữ liệu khác khi tái sử dụng"
 expect_exit 2 "--plan từ chối --tests ngoài kế hoạch" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --tests 5
 expect_exit 2 "--plan từ chối khuôn không khớp" "${BIN[@]}" --problem graph --plan tests/fixtures/array-plan.ojplan.json
+expect_exit 0 "--profile mở lại cấu hình bài đã lưu" "${BIN[@]}" --profile tests/fixtures/single-n.ojproblem.json --tests 3 --seed 14 --no-zip --out "$T/profile"
+[[ $(count "$T/profile" .inp) -eq 3 ]] && grep -q "Hồ sơ hồi quy" "$T/profile/ojgen_info.txt" && ok "profile: cấu hình và thông tin bài được nạp" || bad "profile: không nạp đúng hồ sơ"
+
+echo "== Resume, import, package diff và báo cáo JSON"
+expect_exit 2 "--resume yêu cầu seed cố định" "${BIN[@]}" --problem array --tests 3 --resume --out "$T/resume_missing_seed"
+expect_exit 0 "tạo bộ test có seed trước khi kiểm tra resume" "${BIN[@]}" --problem array --tests 3 --seed 77 --no-zip --out "$T/resume_done"
+expect_exit 2 "--resume từ chối thư mục hoàn tất không có checkpoint" "${BIN[@]}" --problem array --tests 3 --seed 77 --resume --no-zip --out "$T/resume_done"
+mkdir -p "$T/resume_stale_output"
+printf 'output cũ\n' > "$T/resume_stale_output/test01.out"
+expect_exit 2 "--resume từ chối output cũ nếu không có lời giải để tạo lại" "${BIN[@]}" --problem single_n --tests 3 --seed 78 --resume --no-zip --out "$T/resume_stale_output"
+mkdir -p "$T/oj_source/data/sample" "$T/oj_source/data/secret"
+printf '3\n1 2 3\n' > "$T/oj_source/data/sample/01.in"
+printf '6\n' > "$T/oj_source/data/sample/01.ans"
+printf '4\n1 2 3 4\n' > "$T/oj_source/data/secret/01.in"
+printf '10\n' > "$T/oj_source/data/secret/01.ans"
+expect_exit 0 "nhập .in/.ans từ thư mục" "${BIN[@]}" --import-tests "$T/oj_source" --out "$T/imported" --json-report "$T/import.json"
+[[ $(count "$T/imported" .inp) -eq 2 && $(count "$T/imported" .out) -eq 2 && -f "$T/imported/SHA256SUMS.txt" ]] && ok "import: giữ đủ sample/secret trùng basename và tạo checksum" || bad "import: thiếu test hoặc checksum"
+grep -q '"Inputs": 2' "$T/import.json" && grep -q '"Outputs": 2' "$T/import.json" && ok "import: JSON report ghi số lượng" || bad "import: JSON report sai"
+expect_exit 0 "so sánh package với chính nó" "${BIN[@]}" --compare-package "$T/imported" --against "$T/imported" --json-report "$T/compare_same.json"
+grep -q '"same": true' "$T/compare_same.json" && ok "diff: JSON đánh dấu hai package giống nhau" || bad "diff: JSON same sai"
+cp -R "$T/imported" "$T/imported_changed"
+for output in "$T/imported_changed"/*.out; do printf '7\n' > "$output"; done
+expect_exit 1 "so sánh phát hiện output đã đổi" "${BIN[@]}" --compare-package "$T/imported" --against "$T/imported_changed" --json-report "$T/compare_changed.json"
+grep -q '"Changed"' "$T/compare_changed.json" && ok "diff: JSON liệt kê test thay đổi" || bad "diff: thiếu danh sách thay đổi"
+expect_exit 0 "completion Bash" "${BIN[@]}" --completion bash
+grep -q -- '--resume' "$LOG" && grep -q -- '--plugin' "$LOG" && ok "completion: có tùy chọn resume và plugin" || bad "completion: thiếu tùy chọn"
+expect_exit 0 "JSON report khi sinh test" "${BIN[@]}" --problem single_n --tests 2 --seed 8 --no-zip --out "$T/json_job" --json-report "$T/generation.json"
+grep -q '"exitCode": 0' "$T/generation.json" && grep -q '"InputCount": 2' "$T/generation.json" && ok "generation: JSON report có kết quả và số input" || bad "generation: JSON report sai"
 
 echo "== Lời giải chuẩn cho từng module"
 for m in single_n two_ints array queries string custom graph; do
@@ -98,6 +126,16 @@ else
     echo "  (bỏ qua: không có python3)"
 fi
 
+echo "== Lời giải Java và C# đơn file"
+if command -v java > /dev/null; then
+    expect_exit 0 "Java source launcher (.java)" "${BIN[@]}" --problem single_n --tests 3 --seed 4 --solution tests/solutions/EchoSingleN.java --out "$T/java" "${COMMON[@]}"
+    [[ $(count "$T/java" .out) -eq 3 ]] && ok "Java: đủ 3 file .out" || bad "Java: thiếu .out"
+else
+    echo "  (bỏ qua: không có Java runtime)"
+fi
+expect_exit 0 "C# đơn file (.cs)" "${BIN[@]}" --problem single_n --tests 3 --seed 4 --solution tests/solutions/echo_single_n.cs --out "$T/csharp" "${COMMON[@]}"
+[[ $(count "$T/csharp" .out) -eq 3 ]] && ok "C#: đủ 3 file .out" || bad "C#: thiếu .out"
+
 echo "== Tạo lại output (--regen-out)"
 expect_exit 0 "--regen-out" "${BIN[@]}" --regen-out "$T/custom" --solution examples/solutions/custom_sol.cpp --no-zip
 [[ $(count "$T/custom" .out) -eq 100 ]] && ok "regen: đủ 100 file .out" || bad "regen: thiếu .out"
@@ -112,7 +150,10 @@ expect_exit 0 "sinh DAG liên thông" "${BIN[@]}" --problem graph --tests 12 --s
 [[ $(count "$T/graph_dag" .inp) -eq 12 ]] && ok "DAG: sinh đủ input đã xác thực" || bad "DAG: số input sai"
 expect_exit 0 "sinh đồ thị hai phía liên thông" "${BIN[@]}" --problem graph --tests 12 --seed 12 --bipartite 1 --connected 1 --minN 8 --maxN 20 --minM 7 --maxM 70 --out "$T/graph_bipartite" --no-zip
 [[ $(count "$T/graph_bipartite" .inp) -eq 12 ]] && ok "hai phía: sinh đủ input đã xác thực" || bad "hai phía: số input sai"
+expect_exit 0 "sinh đồ thị có hướng liên thông mạnh" "${BIN[@]}" --problem graph --tests 4 --seed 13 --directed 1 --stronglyConnected 1 --simple 1 --minN 5 --maxN 5 --minM 5 --maxM 5 --out "$T/graph_strong" --no-zip
+[[ $(count "$T/graph_strong" .inp) -eq 4 ]] && ok "liên thông mạnh: sinh đủ input" || bad "liên thông mạnh: số input sai"
 expect_exit 2 "DAG cần directed" "${BIN[@]}" --problem graph --dag 1
+expect_exit 2 "liên thông mạnh không kết hợp DAG" "${BIN[@]}" --problem graph --directed 1 --stronglyConnected 1 --dag 1
 expect_exit 2 "dạng bài không tồn tại" "${BIN[@]}" --problem khong_co
 expect_exit 2 "seed âm" "${BIN[@]}" --problem custom --seed -5
 

@@ -104,6 +104,12 @@ if os.path.exists(plan_cs):
     for token in ('TestPlanProfile.From', 'TestPlanProfile.Load', 'BtnClone_Click', 'MoveCurrent', 'BtnMoveUp_Click', 'BtnMoveDown_Click'):
         if token not in plan_code: err(f'TestPlanWindow.xaml.cs: thiếu hỗ trợ kế hoạch test {token}')
 
+profile_cs = os.path.join(ROOT, 'ProblemSetupWindow.xaml.cs')
+if os.path.exists(profile_cs):
+    profile_code = open(profile_cs, encoding='utf-8').read()
+    for token in ('ProblemProfileFile.From', 'ProblemProfileFile.Load', 'BtnSaveProfile_Click', 'BtnLoadProfile_Click'):
+        if token not in profile_code: err(f'ProblemSetupWindow.xaml.cs: thiếu thao tác lưu/mở hồ sơ {token}')
+
 if errors:
     print('PHÁT HIỆN LỖI:')
     for e in errors: print('  -', e)

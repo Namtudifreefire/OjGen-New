@@ -28,6 +28,9 @@ internal static class CliApp
         s.Append("  ojgen --problem <dạng> [tùy chọn]  Sinh bộ test\n");
         s.Append("  ojgen --regen-out <thư mục> --solution <file>   Tạo lại .out cho thư mục test có sẵn\n");
         s.Append("  ojgen --zip-dir <thư mục>          Đóng gói ZIP thư mục test có sẵn\n");
+        s.Append("  ojgen --import-tests <thư mục|ZIP> --out <thư mục mới>  Nhập test OJ vào thư mục chuẩn\n");
+        s.Append("  ojgen --compare-package <A> --against <B>  So sánh nội dung hai bộ test\n");
+        s.Append("  ojgen --completion <bash|powershell>  Tạo gợi ý lệnh cho shell\n");
         s.Append("  ojgen --problem <dạng> --audit ...  Kiểm định phát hành, ghi báo cáo và chỉ ZIP khi đạt\n");
         s.Append("  ojgen --audit-dir <thư mục> --problem <dạng>  Kiểm định/đóng gói test có sẵn\n");
         s.Append("  ojgen --selftest                   Tự kiểm tra các module và bộ tạo ZIP\n");
@@ -35,7 +38,8 @@ internal static class CliApp
         s.Append("TÙY CHỌN KHI SINH TEST\n");
         s.Append($"  --tests N            Số lượng test (1..{Generator.MaxTests}, mặc định 10)\n");
         s.Append("  --seed S             Seed ngẫu nhiên (số nguyên không âm). Cùng seed + cùng cấu hình = cùng bộ test\n");
-        s.Append("  --solution FILE      Lời giải chuẩn (.cpp, .py hoặc .exe) để tạo file .out. Bỏ trống = chỉ tạo .inp\n");
+        s.Append("  --resume             Tiếp tục sinh từ checkpoint; giữ nguyên seed và mọi tùy chọn cấu hình\n");
+        s.Append("  --solution FILE      Lời giải chuẩn (.cpp, .py, .java, .cs hoặc chương trình đã biên dịch) tạo file .out\n");
         s.Append("  --out DIR            Thư mục chứa test (mặc định output/<dạng>)\n");
         s.Append("  --force              Ghi đè test cũ trong thư mục (mặc định: tự tạo thư mục mới <tên>_2, _3...)\n");
         s.Append("  --no-zip             Không tạo file ZIP (mặc định có tạo khi bộ test hoàn chỉnh hoặc chỉ có input)\n");
@@ -52,6 +56,9 @@ internal static class CliApp
         s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini trong thư mục hiện tại)\n");
         s.Append("  --profile FILE       Dùng hồ sơ .ojproblem.json để nạp dạng bài và tham số mặc định\n");
         s.Append("  --plan FILE          Tái sử dụng kế hoạch nhóm .ojplan.json (chứa số lượng/cấu hình từng nhóm)\n");
+        s.Append("  --coverage-required TAGS  Nhãn độ phủ bắt buộc, phân cách bằng dấu phẩy (vd small,boundary,stress)\n");
+        s.Append("  --json-report FILE   Ghi kết quả cuối cùng dạng JSON vào file\n");
+        s.Append("  --plugin PATH        Nạp plugin generator từ DLL hoặc thư mục plugins\n");
         s.Append("  --<tham số> GIÁ_TRỊ  Tham số riêng của dạng bài, xem bằng --info <dạng>\n\n");
         s.Append("KIỂM ĐỊNH PHÁT HÀNH (tùy chọn)\n");
         s.Append("  --audit               Kiểm định bộ vừa sinh trước khi tạo ZIP\n");
@@ -83,8 +90,54 @@ internal static class CliApp
         s.Append("  ojgen --problem graph --tests 30 --minN 5 --maxN 1000 --minM 4 --maxM 5000 --connected 1 --weighted 1\n\n");
         s.Append("  ojgen --problem array --tests 30 --seed 2024 --solution sol.cpp --audit --no-zip\n");
         s.Append("  ojgen --audit-dir output/array --problem array --tests 30 --seed 2024 --solution sol.cpp --allow-audit-warnings\n\n");
-        s.Append("MÃ THOÁT: 0 = thành công, 1 = lời giải lỗi/đã hủy, 2 = lỗi tham số, cấu hình hoặc kiểm định phát hành.\n");
+        s.Append("MÃ THOÁT: 0 = thành công, 1 = có khác biệt khi so sánh package hoặc lời giải lỗi/đã hủy, 2 = lỗi tham số, cấu hình hoặc kiểm định phát hành.\n");
         return s.ToString();
+    }
+
+    private static readonly string[] CompletionOptions =
+    {
+        "--help", "--version", "--list", "--topics", "--topic", "--topic-source", "--problem", "--info",
+        "--tests", "--seed", "--solution", "--out", "--force", "--resume", "--no-zip", "--zip-incomplete",
+        "--rebuild", "--timeout", "--max-output-mb", "--memory-mb", "--compiler", "--cxxflags", "--python",
+        "--prefix", "--no-compress", "--settings", "--profile", "--plan", "--coverage-required", "--json-report",
+        "--audit", "--audit-dir", "--validator", "--checker", "--checker-args", "--checker-timeout",
+        "--compare-solution", "--statement", "--allow-audit-warnings", "--zip-dir", "--regen-out",
+        "--import-tests", "--compare-package", "--against", "--completion", "--plugin", "--selftest",
+    };
+
+    private static string CompletionText(string shell)
+    {
+        string options = string.Join(' ', CompletionOptions);
+        return shell.ToLowerInvariant() switch
+        {
+            "bash" => $"_ojgen_complete() {{ local cur=\"${{COMP_WORDS[COMP_CWORD]}}\"; COMPREPLY=( $(compgen -W '{options}' -- \"$cur\") ); }}\ncomplete -F _ojgen_complete ojgen\n",
+            "powershell" => "Register-ArgumentCompleter -CommandName ojgen -ScriptBlock { param($wordToComplete) " +
+                string.Join(',', CompletionOptions.Select(option => "'" + option + "'")) +
+                " | Where-Object { $_ -like \"$wordToComplete*\" } | ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) } }\n",
+            _ => "",
+        };
+    }
+
+    private static bool WriteJsonReport(string path, object payload, out string? error)
+    {
+        error = null;
+        try
+        {
+            string full = Path.GetFullPath(path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, System.Text.Json.JsonSerializer.Serialize(payload,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
+            return true;
+        }
+        catch (Exception ex) { error = "Không ghi được JSON report: " + ex.Message; return false; }
+    }
+
+    private static int FinishWithJson(Args args, int exitCode, object payload)
+    {
+        if (!args.Kv.TryGetValue("json-report", out string? path)) return exitCode;
+        if (WriteJsonReport(path, payload, out string? error)) return exitCode;
+        Err(error ?? "Không ghi được JSON report.");
+        return 2;
     }
 
     private static string ListText()
@@ -217,14 +270,15 @@ internal static class CliApp
     private static readonly HashSet<string> FlagOnly = new()
     {
         "help", "h", "list", "topics", "version", "selftest", "force", "no-zip", "zip", "zip-incomplete", "rebuild", "no-compress",
-        "audit", "allow-audit-warnings",
+        "audit", "allow-audit-warnings", "resume",
     };
 
     private static readonly HashSet<string> GlobalKeys = new()
     {
         "problem", "tests", "seed", "solution", "out", "timeout", "max-output-mb", "memory-mb", "compiler", "cxxflags",
         "prefix", "info", "regen-out", "zip-dir", "python", "settings", "topic", "topic-source",
-        "audit-dir", "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "profile", "plan",
+        "audit-dir", "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "profile", "plan", "coverage-required",
+        "completion", "import-tests", "compare-package", "against", "json-report", "plugin",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -322,6 +376,13 @@ internal static class CliApp
             return 2;
         }
         var log = new ConsoleLog();
+        string defaultPluginPath = Path.Combine(AppContext.BaseDirectory, "plugins");
+        if (a.Kv.TryGetValue("plugin", out string? pluginPath))
+            foreach (string pluginMessage in ProblemPluginLoader.LoadFrom(pluginPath))
+                Console.Error.WriteLine("PLUGIN: " + pluginMessage);
+        else if (Directory.Exists(defaultPluginPath))
+            foreach (string pluginMessage in ProblemPluginLoader.LoadFrom(defaultPluginPath))
+                Console.Error.WriteLine("PLUGIN: " + pluginMessage);
         if (argv.Length == 0 || a.Flags.Contains("help") || a.Flags.Contains("h")) { Console.Out.Write(UsageText()); return 0; }
         if (a.Flags.Contains("version")) { Console.Out.WriteLine("ojgen " + Util.Version); return 0; }
         if (a.Flags.Contains("list")) { Console.Out.Write(ListText()); return 0; }
@@ -433,13 +494,67 @@ internal static class CliApp
         if ((a.Kv.ContainsKey("checker-args") || a.Kv.ContainsKey("checker-timeout")) && !a.Kv.ContainsKey("checker"))
         { Err("LỖI: --checker-args và --checker-timeout cần đi cùng --checker."); return 2; }
         ZipMode zipMode = a.Flags.Contains("no-zip") ? ZipMode.No : ZipMode.Yes;
+        if (a.Flags.Contains("resume") && a.Flags.Contains("force"))
+        { Err("LỖI: --resume và --force không dùng cùng nhau."); return 2; }
+
+        if (a.Kv.TryGetValue("completion", out string? shell))
+        {
+            string completion = CompletionText(shell);
+            if (completion.Length == 0) { Err("LỖI: --completion chỉ nhận bash hoặc powershell."); return 2; }
+            Console.Out.Write(completion);
+            return 0;
+        }
+        if (a.Kv.TryGetValue("import-tests", out string? importSource))
+        {
+            if (!a.Kv.TryGetValue("out", out string? importDest) || a.Kv.ContainsKey("problem"))
+            { Err("LỖI: --import-tests cần --out <thư mục đích mới> và không dùng --problem."); return 2; }
+            try
+            {
+                var imported = TestPackageTools.Import(importSource, importDest, st.Prefix);
+                Console.Out.WriteLine($"Đã nhập {imported.Inputs} input và {imported.Outputs} output vào {Path.GetFullPath(importDest)}.");
+                foreach (string warning in imported.Warnings) Console.Out.WriteLine("  ! " + warning);
+                if (a.Kv.TryGetValue("json-report", out string? jsonPath) && !WriteJsonReport(jsonPath,
+                    new { exitCode = 0, imported.Inputs, imported.Outputs, imported.Warnings, destination = Path.GetFullPath(importDest) }, out string? jsonError))
+                { Err(jsonError ?? "Không ghi được JSON report."); return 2; }
+                return 0;
+            }
+            catch (Exception ex) { Err("LỖI nhập test: " + ex.Message); return 2; }
+        }
+        if (a.Kv.TryGetValue("compare-package", out string? packageA) || a.Kv.ContainsKey("against"))
+        {
+            if (packageA == null || !a.Kv.TryGetValue("against", out string? packageB))
+            { Err("LỖI: dùng --compare-package <A> --against <B>."); return 2; }
+            try
+            {
+                var diff = TestPackageTools.Compare(packageA, packageB);
+                Console.Out.WriteLine($"Trùng nội dung: {diff.Identical}; thêm ở B: {diff.Added.Count}; thiếu ở B: {diff.Removed.Count}; khác nội dung: {diff.Changed.Count}.");
+                foreach (string item in diff.Added) Console.Out.WriteLine("  + " + item);
+                foreach (string item in diff.Removed) Console.Out.WriteLine("  - " + item);
+                foreach (string item in diff.Changed) Console.Out.WriteLine("  * " + item);
+                int diffExitCode = diff.Same ? 0 : 1;
+                if (a.Kv.TryGetValue("json-report", out string? jsonPath) && !WriteJsonReport(jsonPath,
+                    new { exitCode = diffExitCode, same = diff.Same, diff.Identical, diff.Added, diff.Removed, diff.Changed }, out string? jsonError))
+                { Err(jsonError ?? "Không ghi được JSON report."); return 2; }
+                return diffExitCode;
+            }
+            catch (Exception ex) { Err("LỖI so sánh gói test: " + ex.Message); return 2; }
+        }
 
         if (a.Kv.TryGetValue("zip-dir", out var zdir))
-            return Job.ZipTestFolder(zdir, st, log, out _) ? 0 : 2;
+        {
+            bool ok = Job.ZipTestFolder(zdir, st, log, out string? zipPath);
+            int code = ok ? 0 : 2;
+            if (a.Kv.TryGetValue("json-report", out string? jsonPath) && !WriteJsonReport(jsonPath, new { ok, zipPath }, out string? jsonError))
+            { Err(jsonError ?? "Không ghi được JSON report."); return 2; }
+            return code;
+        }
         if (a.Kv.TryGetValue("regen-out", out var rdir))
         {
             if (!a.Kv.TryGetValue("solution", out var rsol)) { Err("LỖI: --regen-out cần --solution <file lời giải>."); return 2; }
-            return Job.RegenerateOutputs(rdir, rsol, st, zipMode, a.Flags.Contains("rebuild"), a.Flags.Contains("zip-incomplete"), log).ExitCode;
+            var regenerated = Job.RegenerateOutputs(rdir, rsol, st, zipMode, a.Flags.Contains("rebuild"), a.Flags.Contains("zip-incomplete"), log);
+            if (a.Kv.TryGetValue("json-report", out string? jsonPath) && !WriteJsonReport(jsonPath, new { exitCode = regenerated.ExitCode, status = regenerated.Status.ToString(), regenerated.OutDir, regenerated.ZipPath, regenerated.InputCount, regenerated.Report }, out string? jsonError))
+            { Err(jsonError ?? "Không ghi được JSON report."); return 2; }
+            return regenerated.ExitCode;
         }
         string pid;
         if (a.Kv.TryGetValue("problem", out var explicitProblemId)) pid = explicitProblemId;
@@ -522,14 +637,24 @@ internal static class CliApp
             {
                 job.Groups = testPlan.ToGroups(prob);
                 job.TestCount = testPlan.TotalTestCount;
+                job.RequiredCoverageTags = testPlan.RequiredCoverageTags?.ToList() ?? new List<string>();
             }
             catch (Exception ex) { Err("LỖI kế hoạch test: " + ex.Message); return 2; }
+        }
+        if (a.Kv.TryGetValue("coverage-required", out string? requiredTagText))
+        {
+            if (TestCoverageTags.Parse(requiredTagText, out var parsedRequiredTags) is { } coverageTagError)
+            { Err("LỖI nhãn độ phủ: " + coverageTagError); return 2; }
+            job.RequiredCoverageTags = job.RequiredCoverageTags.Concat(parsedRequiredTags)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
         if (a.Kv.TryGetValue("seed", out var ss))
         {
             if (!Util.ParseULL(ss, out ulong sv)) { Err("LỖI: --seed phải là số nguyên không âm."); return 2; }
             job.Seed = sv;
         }
+        if (a.Flags.Contains("resume") && job.Seed == null)
+        { Err("LỖI: --resume cần --seed để tái tạo đúng cùng cấu hình và thứ tự sinh."); return 2; }
         if (a.Kv.TryGetValue("solution", out var sol))
         {
             job.SolutionPath = sol;
@@ -550,6 +675,7 @@ internal static class CliApp
                 GeneratedTestCount = a.Kv.ContainsKey("tests") ? job.TestCount : inputCount,
                 Seed = job.Seed,
                 OutDir = auditDir,
+                RequiredCoverageTags = job.RequiredCoverageTags.ToList(),
             };
             var auditOptions = new CliAuditOptions
             {
@@ -568,19 +694,28 @@ internal static class CliApp
                 Seed = job.Seed,
                 DifferentialSeed = job.Seed ?? Generator.RandomSeed(),
                 GeneratedSpec = auditSpec,
+                RequiredCoverageTags = job.RequiredCoverageTags,
             };
             CliAuditReport auditReport = CliReleaseAudit.Run(auditOptions, log);
-            if (auditReport.Cancelled) return 1;
+            if (auditReport.Cancelled)
+                return FinishWithJson(a, 1, new { exitCode = 1, cancelled = true, audit = auditReport.Items, warnings = auditReport.WarningCount });
             if (auditReport.HasErrors || (zipMode == ZipMode.Yes && auditReport.WarningCount > 0 && !a.Flags.Contains("allow-audit-warnings")))
             {
                 Err("LỖI: không tạo ZIP. Sửa lỗi hoặc dùng --allow-audit-warnings để chấp nhận các cảnh báo đã xem trong AUDIT_REPORT.txt.");
-                return 2;
+                return FinishWithJson(a, 2, new { exitCode = 2, audit = auditReport.Items, warnings = auditReport.WarningCount, zipPath = (string?)null });
             }
-            if (zipMode == ZipMode.Yes && !Job.ZipTestFolder(auditDir, st, log, out _)) return 2;
-            return 0;
+            string? auditZip = null;
+            if (zipMode == ZipMode.Yes && !Job.ZipTestFolder(auditDir, st, log, out auditZip))
+                return FinishWithJson(a, 2, new { exitCode = 2, audit = auditReport.Items, warnings = auditReport.WarningCount, zipPath = auditZip });
+            return FinishWithJson(a, 0, new { exitCode = 0, audit = auditReport.Items, warnings = auditReport.WarningCount, zipPath = auditZip });
         }
         string outDir = a.Kv.TryGetValue("out", out var od) ? od : Path.Combine(st.OutputRoot, prob.Id);
-        if (!Job.PrepareOutDir(ref outDir, a.Flags.Contains("force") ? ExistingPolicy.Overwrite : ExistingPolicy.NewDir, log, out string? outDirError))
+        if (a.Flags.Contains("resume"))
+        {
+            try { Directory.CreateDirectory(outDir); }
+            catch (Exception ex) { Err("LỖI: không chuẩn bị được thư mục tiếp tục: " + ex.Message); return 2; }
+        }
+        else if (!Job.PrepareOutDir(ref outDir, a.Flags.Contains("force") ? ExistingPolicy.Overwrite : ExistingPolicy.NewDir, log, out string? outDirError))
         {
             Err("LỖI: " + (outDirError ?? "Không thể chuẩn bị thư mục đầu ra."));
             return 2;
@@ -589,11 +724,22 @@ internal static class CliApp
         job.Zip = zipMode;
         job.ZipIncomplete = a.Flags.Contains("zip-incomplete");
         job.ForceRebuild = a.Flags.Contains("rebuild");
-        if (!auditMode) return Job.Run(job, st, log).ExitCode;
+        job.ResumeGeneration = a.Flags.Contains("resume");
+        if (!auditMode)
+        {
+            JobResult generatedOnly = Job.Run(job, st, log);
+            if (a.Kv.TryGetValue("json-report", out string? jsonPath) && !WriteJsonReport(jsonPath, new
+                { exitCode = generatedOnly.ExitCode, status = generatedOnly.Status.ToString(), generatedOnly.Seed, generatedOnly.OutDir, generatedOnly.ZipPath,
+                  generatedOnly.InputCount, generatedOnly.Coverage, generatedOnly.Report }, out string? jsonError))
+            { Err(jsonError ?? "Không ghi được JSON report."); return 2; }
+            return generatedOnly.ExitCode;
+        }
 
         job.Zip = ZipMode.No;
         JobResult generated = Job.Run(job, st, log);
-        if (generated.ExitCode >= 2 || generated.Cancelled) return generated.ExitCode;
+        if (generated.ExitCode >= 2 || generated.Cancelled)
+            return FinishWithJson(a, generated.ExitCode, new { exitCode = generated.ExitCode, cancelled = generated.Cancelled,
+                status = generated.Status.ToString(), generated.Seed, generated.OutDir, generated.ZipPath, generated.InputCount, generated.Report });
         job.Seed = generated.Seed;
         var generatedAuditOptions = new CliAuditOptions
         {
@@ -612,16 +758,26 @@ internal static class CliApp
             Seed = generated.Seed,
             DifferentialSeed = generated.Seed,
             GeneratedSpec = job,
+            RequiredCoverageTags = job.RequiredCoverageTags,
         };
         CliAuditReport generatedAudit = CliReleaseAudit.Run(generatedAuditOptions, log);
-        if (generatedAudit.Cancelled) return 1;
-        if (generated.ExitCode != 0) return generated.ExitCode;
+        if (generatedAudit.Cancelled)
+            return FinishWithJson(a, 1, new { exitCode = 1, cancelled = true, status = generated.Status.ToString(), generated.Seed,
+                generated.OutDir, generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount });
+        if (generated.ExitCode != 0)
+            return FinishWithJson(a, generated.ExitCode, new { exitCode = generated.ExitCode, status = generated.Status.ToString(), generated.Seed,
+                generated.OutDir, generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount });
         if (generatedAudit.HasErrors || (zipMode == ZipMode.Yes && generatedAudit.WarningCount > 0 && !a.Flags.Contains("allow-audit-warnings")))
         {
             Err("LỖI: kiểm định chưa được chấp nhận nên không tạo ZIP. Xem AUDIT_REPORT.txt; dùng --allow-audit-warnings nếu đã rà soát các cảnh báo.");
-            return 2;
+            return FinishWithJson(a, 2, new { exitCode = 2, status = generated.Status.ToString(), generated.Seed, generated.OutDir,
+                generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount, zipPath = (string?)null });
         }
-        if (zipMode == ZipMode.Yes && !Job.ZipTestFolder(outDir, st, log, out _)) return 2;
-        return 0;
+        string? finalZipPath = generated.ZipPath;
+        if (zipMode == ZipMode.Yes && !Job.ZipTestFolder(outDir, st, log, out finalZipPath))
+            return FinishWithJson(a, 2, new { exitCode = 2, status = generated.Status.ToString(), generated.Seed, generated.OutDir,
+                generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount, zipPath = finalZipPath });
+        return FinishWithJson(a, 0, new { exitCode = 0, status = generated.Status.ToString(), generated.Seed, generated.OutDir,
+            zipPath = finalZipPath, generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount });
     }
 }

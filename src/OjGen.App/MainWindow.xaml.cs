@@ -37,6 +37,15 @@ public partial class MainWindow : Window
     private string _problemCode = "";
     private List<TestGroupSpec> _testGroups = new();
     private List<ManualTestSpec> _manualTests = new();
+    private List<string> _requiredCoverageTags = new();
+    private readonly List<(JobSpec Spec, ExistingPolicy Policy)> _jobQueue = new();
+
+    private void RefreshQueueMenu()
+    {
+        mnuQueueRun.Header = $"▶ Chạy hàng đợi ({_jobQueue.Count})";
+        mnuQueueRun.IsEnabled = !_running && !_reviewing && _jobQueue.Count > 0;
+        mnuQueueAdd.IsEnabled = !_running && !_reviewing;
+    }
 
     public MainWindow()
     {
@@ -145,6 +154,7 @@ public partial class MainWindow : Window
         _problemName = "";
         _problemCode = "";
         _testGroups.Clear();
+        _requiredCoverageTags.Clear();
         _manualTests.Clear();
         txtTests.Text = "10";
         txtTests.IsEnabled = true;
@@ -198,6 +208,7 @@ public partial class MainWindow : Window
         mnuRegen.IsEnabled = !_running && !_reviewing;
         mnuZipDir.IsEnabled = !_running && !_reviewing;
         mnuSelfTest.IsEnabled = !_running && !_reviewing;
+        RefreshQueueMenu();
     }
 
     private JobPlanner.Options ReadOptions() => new()
@@ -213,6 +224,7 @@ public partial class MainWindow : Window
         ProblemName = _problemName,
         ProblemCode = _problemCode,
         Groups = _testGroups,
+        RequiredCoverageTags = _requiredCoverageTags,
         ManualTests = _manualTests,
     };
 
@@ -258,9 +270,10 @@ public partial class MainWindow : Window
     {
         if (_running || _reviewing || _model == null) return;
         int count = Util.ParseLL(txtTests.Text, out long parsed) && parsed >= 1 && parsed <= Generator.MaxTests ? (int)parsed : 10;
-        var dialog = new TestPlanWindow(_model.Problem, _model.Effective(), count, _testGroups) { Owner = this };
+        var dialog = new TestPlanWindow(_model.Problem, _model.Effective(), count, _testGroups, _requiredCoverageTags) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         _testGroups = dialog.Groups.Select(group => group.Clone()).ToList();
+        _requiredCoverageTags = dialog.RequiredCoverageTags.ToList();
         int total = _testGroups.Sum(group => group.TestCount);
         txtTests.Text = total.ToString();
         txtTests.IsEnabled = false;
@@ -420,7 +433,7 @@ public partial class MainWindow : Window
         var dlg = new OpenFileDialog
         {
             Title = "Chọn lời giải chuẩn",
-            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.exe|Tất cả file (*.*)|*.*",
+            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.java;*.cs;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.java;*.cs;*.exe|Tất cả file (*.*)|*.*",
             CheckFileExists = true,
         };
         if (dlg.ShowDialog(this) == true) txtSolution.Text = dlg.FileName;
@@ -677,6 +690,78 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MnuQueueAdd_Click(object sender, RoutedEventArgs e)
+    {
+        if (_model == null || _running || _reviewing) return;
+        string? error = JobPlanner.Build(_model, ReadOptions(), _st, out var spec, out var policy);
+        if (error != null || spec == null)
+        {
+            MessageBox.Show(this, error ?? "Thông tin chưa hợp lệ.", "Không thể thêm vào hàng đợi", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        spec.Seed ??= Generator.RandomSeed();
+        _jobQueue.Add((CloneJobSpec(spec), policy));
+        _log.Line($"Đã thêm vào hàng đợi: {(spec.ProblemName.Trim().Length > 0 ? spec.ProblemName : spec.Problem.Title)}, {spec.TestCount} test, seed {Util.LL(spec.Seed.Value)}.");
+        RefreshQueueMenu();
+    }
+
+    private async void MnuQueueRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (_running || _reviewing || _jobQueue.Count == 0) return;
+        while (_jobQueue.Count > 0)
+        {
+            var queued = _jobQueue[0];
+            JobSpec job = CloneJobSpec(queued.Spec);
+            var groups = job.Groups.Count > 0 ? job.Groups : new List<TestGroupSpec>
+                { new() { Name = "Tất cả", TestCount = job.TestCount, Cfg = job.Cfg } };
+            _reviewing = true;
+            tabMain.IsEnabled = false;
+            lblStatus.Text = "Đang kiểm tra cấu hình hàng đợi…";
+            UpdateButtons(_model?.Validate() == null);
+            GroupSamplePreview preflight;
+            try { preflight = await Task.Run(() => CreateGroupSamples(job.Problem, groups, job.Seed ?? 0, job.ManualTests)); }
+            catch (Exception ex) { preflight = new(false, "Lỗi khi kiểm tra input mẫu: " + ex.Message, "", 0); }
+            finally
+            {
+                tabMain.IsEnabled = true;
+                _reviewing = false;
+                lblStatus.Text = "Sẵn sàng";
+                UpdateButtons(_model?.Validate() == null);
+            }
+            if (!preflight.Valid)
+            {
+                MessageBox.Show(this, preflight.Error, "Cấu hình trong hàng đợi chưa hợp lệ", MessageBoxButton.OK, MessageBoxImage.Warning);
+                break;
+            }
+            string title = job.ProblemName.Trim().Length > 0 ? job.ProblemName : job.Problem.Title;
+            string summary = $"Hàng đợi: {_jobQueue.Count} mục · đang chạy: {title}\nKhuôn: {job.Problem.Title} · {job.TestCount} test · seed {Util.LL(job.Seed ?? 0)}\nThư mục: {job.OutDir}";
+            var review = new ReviewPlanWindow(summary, preflight.Text, true, "") { Owner = this };
+            if (review.ShowDialog() != true) break;
+            if (queued.Policy == ExistingPolicy.Overwrite && JobPlanner.OutDirHasData(job.OutDir))
+            {
+                var answer = MessageBox.Show(this, $"Thư mục\n{job.OutDir}\nđã có test và sẽ bị ghi đè. Tiếp tục mục này?",
+                    "Xác nhận hàng đợi", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+                if (answer != MessageBoxResult.Yes) break;
+            }
+            JobResult? result = await RunWork($"Hàng đợi · {title}", token =>
+            {
+                string dir = job.OutDir;
+                if (!Job.PrepareOutDir(ref dir, queued.Policy, _log, out string? prepareError))
+                    return new JobResult { ExitCode = 2, Error = prepareError, OutDir = dir };
+                job.OutDir = dir;
+                return Job.Run(job, _st, _log, token);
+            });
+            if (result == null) break;
+            if (!result.Cancelled) _jobQueue.RemoveAt(0);
+            _lastGeneratedResult = result;
+            _lastGeneratedSpec = CloneJobSpec(job);
+            ShowResult(result, "Hàng đợi");
+            RefreshQueueMenu();
+            if (result.Cancelled || result.ExitCode == 2) break;
+        }
+        RefreshQueueMenu();
+    }
+
     private static JobSpec CloneJobSpec(JobSpec source) => new()
     {
         Problem = source.Problem,
@@ -692,6 +777,7 @@ public partial class MainWindow : Window
         ProblemName = source.ProblemName,
         ProblemCode = source.ProblemCode,
         Groups = source.Groups.Select(group => group.Clone()).ToList(),
+        RequiredCoverageTags = source.RequiredCoverageTags.ToList(),
         ManualTests = source.ManualTests.Select(test => test.Clone()).ToList(),
     };
 

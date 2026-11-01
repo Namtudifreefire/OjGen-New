@@ -14,6 +14,7 @@ ojgen_settings.ini
 *.log
 *.tmp
 *.temp
+.ojgen_checkpoint.json
 .DS_Store
 Thumbs.db
 Desktop.ini

@@ -1,4 +1,5 @@
 using OjGen.Core;
+using System.Text.RegularExpressions;
 
 namespace OjGen.Gui;
 
@@ -34,6 +35,22 @@ internal static class StatementConsistencyChecker
         if (document.Constraints.Trim().Length == 0) result.Errors.Add("Chưa ghi giới hạn.");
         else if (document.Constraints.Trim().Equals("Điền các giới hạn chính thức của đề bài tại đây.", StringComparison.OrdinalIgnoreCase))
             result.Errors.Add("Phần giới hạn vẫn là nội dung gợi ý mặc định.");
+        if (document.Description.Trim().Length is > 0 and < 30)
+            result.Warnings.Add("Mô tả đề khá ngắn; hãy rà lại mục tiêu, yêu cầu và trường hợp đặc biệt.");
+        if (!document.Constraints.Any(char.IsDigit))
+            result.Warnings.Add("Không thấy số trong phần giới hạn; kiểm tra đã ghi đủ cận dữ liệu.");
+        string statementText = string.Join("\n", document.Description, document.Input, document.Output, document.Constraints, document.Examples);
+        if (!Regex.IsMatch(statementText, @"\bO\s*\(", RegexOptions.IgnoreCase))
+            result.Warnings.Add("Chưa thấy độ phức tạp dạng O(...); cân nhắc ghi để người giải hiểu giới hạn thời gian.");
+        string codeFence = new string((char)96, 3);
+        if (!document.Examples.Contains(codeFence) && markedSamples.Count > 0)
+            result.Warnings.Add("Ví dụ chưa có code fence Markdown; định dạng này giúp giữ nguyên khoảng trắng input/output.");
+        string fencePattern = Regex.Escape(codeFence) + @"[^\n]*\n(?<body>.*?)" + Regex.Escape(codeFence);
+        var exampleBlocks = Regex.Matches(document.Examples, fencePattern, RegexOptions.Singleline)
+            .Cast<Match>().Select(match => match.Groups["body"].Value.Trim()).ToList();
+        if (exampleBlocks.Count > 0 && markedSamples.Count > 0 &&
+            !markedSamples.Any(sample => exampleBlocks.Any(block => block.Contains(sample.Input.Trim(), StringComparison.Ordinal))))
+            result.Warnings.Add("Không tìm thấy input của test Sample trong các code block của phần Ví dụ.");
         if (document.Input.Trim() != problem.FormatDescription.TrimEnd())
             result.Warnings.Add("Mô tả input đã khác cấu trúc khuôn generator; hãy đối chiếu thủ công.");
         if (markedSamples.Count == 0) result.Warnings.Add("Chưa có test được đánh dấu Sample.");

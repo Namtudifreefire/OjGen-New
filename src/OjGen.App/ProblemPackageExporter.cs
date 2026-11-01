@@ -9,6 +9,7 @@ namespace OjGen.Gui;
 
 internal sealed class ProblemPackageOptions
 {
+    public string ExportFormat { get; set; } = "OjGen";
     public string ParentDirectory { get; set; } = "";
     public string PackageName { get; set; } = "problem";
     public string TestDirectory { get; set; } = "";
@@ -43,6 +44,22 @@ internal static class ProblemPackageExporter
         string safe = new(value.Select(c => Path.GetInvalidFileNameChars().Contains(c) || char.IsControl(c) ? '_' : c).ToArray());
         safe = safe.Trim().Trim('.', ' ');
         return safe.Length == 0 ? "problem" : safe;
+    }
+
+    private static string SafeIcpcPackageName(string value)
+    {
+        string name = new(value.ToLowerInvariant().Where(char.IsAsciiLetterOrDigit).ToArray());
+        return name.Length == 0 ? "problem" : name;
+    }
+
+    private static void CopyUtf8Text(string source, string target)
+    {
+        string content;
+        try { content = new UTF8Encoding(false, true).GetString(File.ReadAllBytes(source)); }
+        catch (DecoderFallbackException ex) { throw new InvalidDataException("Nội dung văn bản trong gói phải là UTF-8: " + Path.GetFileName(source), ex); }
+        content = content.TrimStart('\uFEFF').Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        if (content.Length > 0 && !content.EndsWith('\n')) content += "\n";
+        File.WriteAllText(target, content, new UTF8Encoding(false));
     }
 
     private static void CopyOptional(string source, string targetDirectory, string name)
@@ -123,19 +140,38 @@ internal static class ProblemPackageExporter
             if (integrityError != null && integrityError != "Chưa có manifest SHA-256.")
                 throw new InvalidDataException("Bộ test thay đổi sau khi kiểm định: " + integrityError);
         }
+        if (options.ExportFormat == "Icpc")
+        {
+            if (!options.IncludeTests) throw new InvalidDataException("Gói Kattis 2025-09 cần kèm bộ test bí mật.");
+            if (!options.IncludeReferenceSolution || options.ReferenceSolution.Trim().Length == 0)
+                throw new InvalidDataException("Gói Kattis 2025-09 cần lời giải chuẩn trong submissions/accepted.");
+            if (!string.Equals(Path.GetExtension(options.ValidatorPath), ".py", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Gói Kattis 2025-09 cần validator Python (.py) để tạo launcher tương thích.");
+            string solutionExtension = Path.GetExtension(options.ReferenceSolution);
+            if (!new[] { ".cpp", ".cc", ".cxx", ".c++", ".c", ".py", ".java", ".cs" }
+                    .Contains(solutionExtension, StringComparer.OrdinalIgnoreCase))
+                throw new InvalidDataException("Lời giải chuẩn trong gói Kattis phải là mã nguồn C, C++, Python, Java hoặc C#.");
+        }
 
-        string baseName = SafeName(options.PackageName.Length == 0 ? document.Code : options.PackageName);
+        string baseName = options.ExportFormat == "Icpc"
+            ? SafeIcpcPackageName(options.PackageName.Length == 0 ? document.Code : options.PackageName)
+            : SafeName(options.PackageName.Length == 0 ? document.Code : options.PackageName);
         string parentDirectory = Path.GetFullPath(options.ParentDirectory);
         string packageDirectory;
         for (int suffix = 1; ; suffix++)
         {
-            string candidateName = suffix == 1 ? baseName : baseName + "_" + suffix;
+            string candidateName = suffix == 1 ? baseName : baseName + (options.ExportFormat == "Icpc" ? suffix.ToString() : "_" + suffix);
             packageDirectory = Path.Combine(parentDirectory, candidateName);
             string candidateZip = packageDirectory + ".zip";
             if (!Directory.Exists(packageDirectory) && !File.Exists(packageDirectory) &&
                 (!options.CreateZip || (!File.Exists(candidateZip) && !Directory.Exists(candidateZip)))) break;
         }
         Directory.CreateDirectory(packageDirectory);
+
+        try
+        {
+            if (options.ExportFormat == "Icpc")
+                return ExportIcpcPackage(options, document, problem, packageDirectory, testInputs, manualTests);
 
         File.WriteAllText(Path.Combine(packageDirectory, "statement.md"), document.ToMarkdown(), new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(packageDirectory, "statement.html"), document.ToHtml(), new UTF8Encoding(false));
@@ -229,6 +265,146 @@ internal static class ProblemPackageExporter
                 throw;
             }
         }
-        return new ProblemPackageResult { Directory = packageDirectory, ZipPath = zipPath, InputCount = inputs, OutputCount = outputs, SampleCount = samples };
+            return new ProblemPackageResult { Directory = packageDirectory, ZipPath = zipPath, InputCount = inputs, OutputCount = outputs, SampleCount = samples };
+        }
+        catch
+        {
+            try { if (Directory.Exists(packageDirectory)) Directory.Delete(packageDirectory, recursive: true); } catch (Exception) { }
+            try { if (File.Exists(packageDirectory + ".zip")) File.Delete(packageDirectory + ".zip"); } catch (Exception) { }
+            throw;
+        }
+    }
+
+    private static string StablePackageUuid(string code)
+    {
+        byte[] hash = SHA1.HashData(Encoding.UTF8.GetBytes("OjGen.ICPC:" + code.Trim().ToLowerInvariant()));
+        byte[] bytes = hash[..16];
+        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes).ToString();
+    }
+
+    private static string YamlQuote(string value) => "\"" + new string(value.Select(ch => char.IsControl(ch) ? ' ' : ch).ToArray())
+        .Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+    private static ProblemPackageResult ExportIcpcPackage(ProblemPackageOptions options,
+        ProblemAuthoringDocument document, Problem problem, string packageDirectory,
+        IReadOnlyList<string> testInputs, IReadOnlyList<ManualTestSpec> manualTests)
+    {
+        string statementDir = Path.Combine(packageDirectory, "statement");
+        string sampleDir = Path.Combine(packageDirectory, "data", "sample");
+        string secretDir = Path.Combine(packageDirectory, "data", "secret");
+        string solutionDir = Path.Combine(packageDirectory, "submissions", "accepted");
+        string validatorDir = Path.Combine(packageDirectory, "input_validators");
+        Directory.CreateDirectory(statementDir);
+        Directory.CreateDirectory(sampleDir);
+        Directory.CreateDirectory(secretDir);
+        Directory.CreateDirectory(solutionDir);
+        Directory.CreateDirectory(validatorDir);
+
+        string markdown = document.ToMarkdown();
+        int titleEnd = markdown.IndexOf('\n');
+        if (titleEnd >= 0) markdown = markdown[(titleEnd + 1)..].TrimStart();
+        File.WriteAllText(Path.Combine(statementDir, "problem.vi.md"), markdown, new UTF8Encoding(false));
+        string timeSeconds = (document.TimeLimitMs / 1000d).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        string yaml = "problem_format_version: \"2025-09\"\n" +
+            "name:\n  vi: " + YamlQuote(document.Name) + "\n" +
+            "uuid: " + StablePackageUuid(document.Code) + "\n" +
+            "type: pass-fail\n" +
+            "limits:\n  time_limit: " + timeSeconds + "\n  memory: " + document.MemoryLimitMb + "\n";
+        File.WriteAllText(Path.Combine(packageDirectory, "problem.yaml"), yaml, new UTF8Encoding(false));
+
+        string rawSolutionExt = Path.GetExtension(options.ReferenceSolution);
+        string solutionExt = rawSolutionExt.Equals(".C", StringComparison.Ordinal) ? ".cpp" : rawSolutionExt.ToLowerInvariant();
+        if (solutionExt is ".cc" or ".cxx" or ".c++") solutionExt = ".cpp";
+        string solutionName = "reference" + solutionExt;
+        CopyUtf8Text(options.ReferenceSolution, Path.Combine(solutionDir, solutionName));
+
+        string validatorProgramDir = Path.Combine(validatorDir, "ojgen_validator");
+        Directory.CreateDirectory(validatorProgramDir);
+        CopyUtf8Text(options.ValidatorPath, Path.Combine(validatorProgramDir, "validator.py"));
+        string launcher =
+            "#!/bin/sh\n" +
+            "set -eu\n" +
+            "input=$(mktemp)\n" +
+            "trap 'rm -f \"$input\"' EXIT HUP INT TERM\n" +
+            "cat > \"$input\"\n" +
+            "set +e\n" +
+            "python3 \"$(dirname \"$0\")/validator.py\" \"$input\" \"$@\" < \"$input\"\n" +
+            "status=$?\n" +
+            "set -e\n" +
+            "if [ \"$status\" -eq 0 ]; then exit 42; else exit \"$status\"; fi\n";
+        string launcherPath = Path.Combine(validatorProgramDir, "run");
+        File.WriteAllText(launcherPath, launcher, new UTF8Encoding(false));
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            File.SetUnixFileMode(launcherPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+        int sampleCount = 0, secretCount = 0, outputCount = 0;
+        int manualCount = Math.Min(manualTests.Count, testInputs.Count);
+        for (int i = 0; i < testInputs.Count; i++)
+        {
+            string input = testInputs[i];
+            string output = Path.ChangeExtension(input, ".out");
+            if (!File.Exists(output)) throw new InvalidDataException($"Thiếu output cho {Path.GetFileName(input)}.");
+            bool isSample = i < manualCount && manualTests[i].IsSample;
+            if (isSample)
+            {
+                sampleCount++;
+                string stem = "sample" + sampleCount.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+                CopyUtf8Text(input, Path.Combine(sampleDir, stem + ".in"));
+                CopyUtf8Text(output, Path.Combine(sampleDir, stem + ".ans"));
+            }
+            else
+            {
+                secretCount++;
+                string stem = "test" + secretCount.ToString("00000", System.Globalization.CultureInfo.InvariantCulture);
+                CopyUtf8Text(input, Path.Combine(secretDir, stem + ".in"));
+                CopyUtf8Text(output, Path.Combine(secretDir, stem + ".ans"));
+            }
+            outputCount++;
+        }
+        if (secretCount == 0) throw new InvalidDataException("Gói ICPC/Kattis cần ít nhất một test trong data/secret; hãy giữ một test không đánh dấu Sample.");
+        if (sampleCount == 0) Directory.Delete(sampleDir);
+        File.WriteAllText(Path.Combine(validatorProgramDir, "README.txt"),
+            "This package uses the Kattis Problem Package Format 2025-09 release candidate. Check support in the target judge before importing.\n" +
+            "The run script wraps validator.py, reads the judge input from stdin, also supplies a temporary input path as argv[1], and maps validator exit code 0 to 42.\n" +
+            "The Python validator must be standalone and must use only its input and command-line arguments.\n" +
+            "If executable permissions were not preserved, run: chmod +x run\n", new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(packageDirectory, "README-IMPORT.txt"),
+            "This package uses the Kattis Problem Package Format 2025-09 release candidate. It is not widely supported; check the target judge before importing.\n" +
+            "The validator launcher and accepted solution are source files. Review package metadata, statement, samples, and permissions before use.\n", new UTF8Encoding(false));
+
+        string zipPath = "";
+        if (options.CreateZip)
+        {
+            zipPath = packageDirectory + ".zip";
+            try
+            {
+                using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+                {
+                    foreach (string file in Directory.EnumerateFiles(packageDirectory, "*", SearchOption.AllDirectories))
+                    {
+                        string entryName = Path.GetRelativePath(packageDirectory, file).Replace(Path.DirectorySeparatorChar, '/');
+                        var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                        if (entryName == "input_validators/ojgen_validator/run") entry.ExternalAttributes = unchecked((int)(0x81ED << 16));
+                        using var source = File.OpenRead(file);
+                        using var target = entry.Open();
+                        source.CopyTo(target);
+                    }
+                }
+                VerifyPackageZip(packageDirectory, zipPath);
+            }
+            catch
+            {
+                try { if (File.Exists(zipPath)) File.Delete(zipPath); } catch (Exception) { }
+                throw;
+            }
+        }
+        return new ProblemPackageResult
+        {
+            Directory = packageDirectory, ZipPath = zipPath, InputCount = testInputs.Count,
+            OutputCount = outputCount, SampleCount = sampleCount,
+        };
     }
 }

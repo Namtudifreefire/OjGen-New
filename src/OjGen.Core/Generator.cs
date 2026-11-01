@@ -1,5 +1,7 @@
 // Generator.cs - Sinh các file .inp cho một dạng bài.
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace OjGen.Core;
 
@@ -11,6 +13,7 @@ public sealed class GenerateRequest
     public ulong Seed { get; set; }
     public string OutDir { get; set; } = "";
     public string Prefix { get; set; } = "test";
+    public bool Resume { get; set; }
     public IReadOnlyList<TestGroupSpec> Groups { get; set; } = Array.Empty<TestGroupSpec>();
     public IReadOnlyList<ManualTestSpec> ManualTests { get; set; } = Array.Empty<ManualTestSpec>();
 }
@@ -28,6 +31,47 @@ public static class Generator
 {
     public const int MaxTests = 10000;
     public const int MaxGroups = 100;
+    private const string CheckpointFile = ".ojgen_checkpoint.json";
+
+    private sealed class GenerationCheckpoint
+    {
+        public int Version { get; set; } = 1;
+        public string Fingerprint { get; set; } = "";
+        public Dictionary<string, string> InputHashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string RequestFingerprint(GenerateRequest req, IReadOnlyList<TestGroupSpec> groups)
+    {
+        var model = new
+        {
+            generatorVersion = Util.Version,
+            problem = req.Problem.Id, problemType = req.Problem.GetType().FullName,
+            problemAssembly = req.Problem.GetType().Assembly.GetName().Version?.ToString(),
+            req.Seed, req.Prefix,
+            groups = groups.Select(g => new { g.Name, g.TestCount, g.Seed, ints = g.Cfg.Ints.OrderBy(x => x.Key).ToArray(), texts = g.Cfg.Texts.OrderBy(x => x.Key).ToArray() }),
+            manual = req.ManualTests.Select(t => new { t.Name, t.Input, ints = t.Cfg.Ints.OrderBy(x => x.Key).ToArray(), texts = t.Cfg.Texts.OrderBy(x => x.Key).ToArray() }),
+        };
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(model);
+        return Convert.ToHexString(SHA256.HashData(bytes));
+    }
+
+    private static bool SaveCheckpoint(string path, GenerationCheckpoint checkpoint, out string? error)
+    {
+        error = null;
+        try
+        {
+            string temp = path + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(checkpoint), new UTF8Encoding(false));
+            File.Move(temp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            try { File.Delete(path + ".tmp"); } catch (Exception) { }
+            error = "Không lưu được checkpoint sinh test: " + ex.Message;
+            return false;
+        }
+    }
 
     /// <summary>Kiểm tra cấu hình (miền từng tham số + logic của module). null nếu hợp lệ.</summary>
     public static string? ValidateFullConfig(Problem p, Config cfg) =>
@@ -131,6 +175,39 @@ public static class Generator
             return res;
         }
 
+        string checkpointPath = Path.Combine(req.OutDir, CheckpointFile);
+        string fingerprint = RequestFingerprint(req, groups);
+        var checkpoint = new GenerationCheckpoint { Fingerprint = fingerprint };
+        if (req.Resume)
+        {
+            try
+            {
+                if (File.Exists(checkpointPath))
+                {
+                    var loaded = JsonSerializer.Deserialize<GenerationCheckpoint>(File.ReadAllText(checkpointPath));
+                    if (loaded == null || loaded.Version != 1 || !string.Equals(loaded.Fingerprint, fingerprint, StringComparison.Ordinal))
+                    { res.Error = "Checkpoint không khớp cấu hình, seed, nhóm test hoặc danh sách test nhập tay hiện tại."; return res; }
+                    checkpoint = loaded;
+
+                    var expectedNames = Enumerable.Range(1, total)
+                        .Select(index => FileManager.TestName(req.Prefix, index, FileManager.TestNumberWidth(total)) + ".inp")
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (checkpoint.InputHashes.Keys.Any(name => !expectedNames.Contains(name)))
+                    { res.Error = "Checkpoint chứa tên input nằm ngoài kế hoạch test hiện tại."; return res; }
+                    var existingNames = FileManager.ListFilesWithExt(req.OutDir, ".inp")
+                        .Select(Path.GetFileName).Where(name => name != null).Cast<string>()
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    string? untracked = existingNames.FirstOrDefault(name => !checkpoint.InputHashes.ContainsKey(name));
+                    if (untracked != null)
+                    { res.Error = $"Thư mục có input không được ghi trong checkpoint ({untracked}); không tiếp tục để tránh trộn bộ test."; return res; }
+                }
+                else if (FileManager.ListFilesWithExt(req.OutDir, ".inp").Count > 0)
+                { res.Error = "Thư mục đã có input nhưng không có checkpoint; không thể tiếp tục an toàn."; return res; }
+                else checkpoint = new GenerationCheckpoint { Fingerprint = fingerprint };
+            }
+            catch (Exception ex) { res.Error = "Checkpoint hỏng hoặc không đọc được: " + ex.Message; return res; }
+        }
+
         int width = FileManager.TestNumberWidth(total);
         var seen = new Dictionary<ulong, int>();   // hash nội dung -> số thứ tự test
         int duplicates = 0;
@@ -149,7 +226,7 @@ public static class Generator
             }
             else seen[hash] = globalTest;
             string path = Path.Combine(req.OutDir, FileManager.TestName(req.Prefix, globalTest, width) + ".inp");
-            if (!FileManager.WriteFile(path, manual.Input, out string? writeError)) { res.Error = writeError ?? "Lỗi ghi test nhập tay."; return res; }
+            if (!WriteOrVerifyResumeInput(req, checkpoint, path, manual.Input, out string? writeError)) { res.Error = writeError ?? "Lỗi ghi test nhập tay."; return res; }
             res.Inputs.Add(path);
             log.Progress("Ghi test nhập tay", globalTest, total);
         }
@@ -185,7 +262,7 @@ public static class Generator
                     seen[Util.Fnv1aAscii(data)] = globalTest;
                 }
                 string f = Path.Combine(req.OutDir, FileManager.TestName(req.Prefix, globalTest, width) + ".inp");
-                if (!FileManager.WriteFile(f, data, out string? werr)) { res.Error = werr ?? "Lỗi ghi file."; return res; }
+                if (!WriteOrVerifyResumeInput(req, checkpoint, f, data, out string? werr)) { res.Error = werr ?? "Lỗi ghi file."; return res; }
                 res.Inputs.Add(f);
                 log.Progress($"Sinh input · {group.Name}", globalTest, total);
             }
@@ -195,5 +272,34 @@ public static class Generator
                              $"({dupList.Trim()}{(duplicates > 10 ? " ..." : "")}). Hãy nới giới hạn hoặc giảm số test.");
         res.Ok = true;
         return res;
+    }
+
+    /// <summary>Remove the resume marker only after the enclosing job has finalized its outputs.</summary>
+    public static void CompleteResumeCheckpoint(string outDir)
+    {
+        try { File.Delete(Path.Combine(outDir, CheckpointFile)); } catch (Exception) { }
+    }
+
+    private static bool WriteOrVerifyResumeInput(GenerateRequest req, GenerationCheckpoint checkpoint, string path, string expected, out string? error)
+    {
+        error = null;
+        string name = Path.GetFileName(path);
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(expected)));
+        if (req.Resume && checkpoint.InputHashes.TryGetValue(name, out string? recorded))
+        {
+            if (!File.Exists(path)) { error = $"Checkpoint ghi {name} nhưng file đã mất."; return false; }
+            string existing = File.ReadAllText(path, Encoding.UTF8);
+            string actual = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(existing)));
+            if (!string.Equals(actual, recorded, StringComparison.OrdinalIgnoreCase) || !string.Equals(hash, recorded, StringComparison.OrdinalIgnoreCase))
+            { error = $"File {name} khác checkpoint hoặc khác dữ liệu được tái tạo; không tiếp tục để tránh trộn bộ test."; return false; }
+            return true;
+        }
+        if (File.Exists(path)) { error = $"File {name} đã tồn tại nhưng không có trong checkpoint; không ghi đè."; return false; }
+        if (!FileManager.WriteFile(path, expected, out error)) return false;
+        checkpoint.InputHashes[name] = hash;
+        if (SaveCheckpoint(Path.Combine(req.OutDir, CheckpointFile), checkpoint, out error)) return true;
+        try { File.Delete(path); } catch (Exception) { }
+        checkpoint.InputHashes.Remove(name);
+        return false;
     }
 }

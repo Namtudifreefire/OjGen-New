@@ -22,6 +22,9 @@
             </MenuItem>
 
             <MenuItem Header="Công cụ">
+                <MenuItem x:Name="mnuQueueAdd" Header="➕ Thêm cấu hình hiện tại vào hàng đợi" Click="MnuQueueAdd_Click" />
+                <MenuItem x:Name="mnuQueueRun" Header="▶ Chạy hàng đợi (0)" Click="MnuQueueRun_Click" IsEnabled="False" />
+                <Separator />
                 <MenuItem x:Name="mnuRegen" Header="🔁 Tạo lại output cho thư mục test có sẵn…" Click="MnuRegen_Click" />
                 <MenuItem x:Name="mnuZipDir" Header="📦 Nén ZIP thư mục test có sẵn…" Click="MnuZipDir_Click" />
                 <Separator />

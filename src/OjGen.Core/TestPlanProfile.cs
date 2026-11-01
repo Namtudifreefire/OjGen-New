@@ -7,16 +7,20 @@ public sealed class TestPlanProfile
 {
     public int Version { get; set; } = 1;
     public string ProblemId { get; set; } = "";
+    public List<string> RequiredCoverageTags { get; set; } = new();
     public List<TestPlanGroupProfile> Groups { get; set; } = new();
 
-    public static TestPlanProfile From(Problem problem, IReadOnlyList<TestGroupSpec> groups) => new()
+    public static TestPlanProfile From(Problem problem, IReadOnlyList<TestGroupSpec> groups,
+        IReadOnlyList<string>? requiredCoverageTags = null) => new()
     {
         ProblemId = problem.Id,
+        RequiredCoverageTags = requiredCoverageTags?.ToList() ?? new List<string>(),
         Groups = groups.Select(group => new TestPlanGroupProfile
         {
             Name = group.Name,
             TestCount = group.TestCount,
             Seed = group.Seed,
+            CoverageTags = group.CoverageTags?.ToList() ?? new List<string>(),
             Ints = new Dictionary<string, long>(group.Cfg.Ints, StringComparer.OrdinalIgnoreCase),
             Texts = new Dictionary<string, string>(group.Cfg.Texts, StringComparer.OrdinalIgnoreCase),
         }).ToList(),
@@ -31,6 +35,9 @@ public sealed class TestPlanProfile
         if (string.IsNullOrWhiteSpace(profile.ProblemId)) throw new InvalidDataException("Kế hoạch chưa có ProblemId.");
         if (profile.Groups == null || profile.Groups.Count == 0 || profile.Groups.Count > Generator.MaxGroups)
             throw new InvalidDataException($"Số nhóm phải trong [1, {Generator.MaxGroups}].");
+        if (TestCoverageTags.Parse(string.Join(',', profile.RequiredCoverageTags ?? new()), out var requiredTags) is { } tagsError)
+            throw new InvalidDataException(tagsError);
+        profile.RequiredCoverageTags = requiredTags;
         return profile;
     }
 
@@ -68,8 +75,13 @@ public sealed class TestPlanProfile
             }
             if (Generator.ValidateFullConfig(problem, config) is { } error)
                 throw new InvalidDataException($"Nhóm '{name}' có cấu hình sai: {error}");
-            result.Add(new TestGroupSpec { Name = name, TestCount = saved.TestCount, Seed = saved.Seed, Cfg = config });
+            if (TestCoverageTags.Parse(string.Join(',', saved.CoverageTags ?? new()), out var groupTags) is { } groupTagsError)
+                throw new InvalidDataException($"Nhóm '{name}': {groupTagsError}");
+            result.Add(new TestGroupSpec { Name = name, TestCount = saved.TestCount, Seed = saved.Seed, Cfg = config, CoverageTags = groupTags });
         }
+        if (TestCoverageTags.Parse(string.Join(',', RequiredCoverageTags ?? new()), out var normalizedRequired) is { } requiredError)
+            throw new InvalidDataException(requiredError);
+        RequiredCoverageTags = normalizedRequired;
         return result;
     }
 
@@ -84,6 +96,7 @@ public sealed class TestPlanGroupProfile
     public string Name { get; set; } = "";
     public int TestCount { get; set; }
     public ulong? Seed { get; set; }
+    public List<string> CoverageTags { get; set; } = new();
     public Dictionary<string, long> Ints { get; set; } = new();
     public Dictionary<string, string> Texts { get; set; } = new();
 }
