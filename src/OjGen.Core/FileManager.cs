@@ -8,6 +8,12 @@ public static class FileManager
 {
     public const string InfoFile = "ojgen_info.txt";
     public const string ChecksumFile = "SHA256SUMS.txt";
+    private static readonly string[] GeneratedSidecarNames =
+    {
+        InfoFile, ChecksumFile, ".ojgen_checkpoint.json", ".ojgen_output_checkpoint.json",
+        "ojgen_provenance.json", "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt",
+        "problem.ojdraft.json",
+    };
 
     /// <summary>Ghi nhị phân (giữ nguyên \n, không đổi thành \r\n trên Windows).</summary>
     public static bool WriteFile(string path, string data, out string? err) =>
@@ -114,6 +120,10 @@ public static class FileManager
     public static int CountTestFiles(string dir) =>
         ListFilesWithExt(dir, ".inp").Count + ListFilesWithExt(dir, ".out").Count;
 
+    /// <summary>True when a directory contains metadata created by OjGen for a test set.</summary>
+    public static bool HasGeneratedSidecars(string dir) =>
+        GeneratedSidecarNames.Any(name => File.Exists(Path.Combine(dir, name)));
+
     /// <summary>Ghi SHA-256 cho toàn bộ file .inp/.out trong thư mục.</summary>
     public static bool WriteTestChecksumManifest(string dir, out int fileCount, out string? err)
     {
@@ -203,14 +213,7 @@ public static class FileManager
             err = $"Không thể liệt kê file test trong {dir}: {ex.Message}";
             return -1;
         }
-        string info = Path.Combine(dir, InfoFile);
-        if (File.Exists(info)) files.Add(info);
-        string checksums = Path.Combine(dir, ChecksumFile);
-        if (File.Exists(checksums)) files.Add(checksums);
-        string checkpoint = Path.Combine(dir, ".ojgen_checkpoint.json");
-        if (File.Exists(checkpoint)) files.Add(checkpoint);
-        foreach (string name in new[] { ".ojgen_output_checkpoint.json", "ojgen_provenance.json", "AUDIT_REPORT.txt",
-                     "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt", "problem.ojdraft.json" })
+        foreach (string name in GeneratedSidecarNames)
         {
             string path = Path.Combine(dir, name);
             if (File.Exists(path)) files.Add(path);

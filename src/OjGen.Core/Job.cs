@@ -313,7 +313,7 @@ public static class Job
     }
 
     /// <summary>
-    /// Chuẩn bị thư mục chứa test khi thư mục (hoặc file .zip cùng tên) đã có dữ liệu.
+    /// Chuẩn bị thư mục chứa test khi thư mục có test/metadata OjGen hoặc file .zip cùng tên.
     /// Có thể đổi dir (NewDir). Trả về false nếu lỗi.
     /// </summary>
     public static bool PrepareOutDir(ref string dir, ExistingPolicy policy, IJobLog log, out string? err)
@@ -324,7 +324,7 @@ public static class Job
         try { n = FileManager.CountTestFiles(dir); }
         catch (Exception ex) { err = "Không thể kiểm tra thư mục đầu ra: " + ex.Message; return false; }
         bool zipExists = File.Exists(zip);
-        if (n == 0 && !zipExists) return true;
+        if (n == 0 && !zipExists && !FileManager.HasGeneratedSidecars(dir)) return true;
         if (policy == ExistingPolicy.NewDir)
         {
             dir = FileManager.UniqueDir(dir);
@@ -338,7 +338,7 @@ public static class Job
             try { File.Delete(zip); }
             catch (Exception) { err = "Không xóa được file ZIP cũ " + zip; return false; }
         }
-        log.Line($"Ghi đè: đã xóa {removed} file test cũ" + (zipExists ? " và file ZIP cũ" : "") + ".");
+        log.Line($"Ghi đè: đã xóa {removed} file thuộc bộ test cũ" + (zipExists ? " và file ZIP cũ" : "") + ".");
         return true;
     }
 
@@ -559,10 +559,22 @@ public static class Job
         }
         foreach (var w in g.Warnings) info.Append("Cảnh báo: ").Append(w).Append('\n');
         foreach (var w in rep.Warnings) info.Append("Cảnh báo: ").Append(w).Append('\n');
-        FileManager.WriteFile(Path.Combine(job.OutDir, FileManager.InfoFile), info.ToString());
+        if (!FileManager.WriteFile(Path.Combine(job.OutDir, FileManager.InfoFile), info.ToString(), out string? infoError))
+        {
+            result.ExitCode = 2;
+            result.Error = infoError ?? "Không ghi được file thông tin bộ test.";
+            log.Line("LỖI: " + result.Error);
+            return result;
+        }
         if (FileManager.WriteTestChecksumManifest(job.OutDir, out int checksumCount, out string? checksumError))
             log.Line($"Đã ghi SHA-256 cho {checksumCount} file test vào {FileManager.ChecksumFile}.");
-        else log.Line("  ! " + checksumError);
+        else
+        {
+            result.ExitCode = 2;
+            result.Error = checksumError ?? "Không ghi được manifest SHA-256.";
+            log.Line("LỖI: " + result.Error);
+            return result;
+        }
 
         log.Line("");
         log.Line((cancelled ? "ĐÃ HỦY. " : "") + "KẾT QUẢ: " + StatusLine(status));
@@ -669,16 +681,36 @@ public static class Job
                 info.Append("    ").Append(metric.Name).Append(": ").Append(metric.ElapsedMs).Append(" ms; ")
                     .Append(Util.FmtBytes(metric.PeakMemoryBytes)).Append("; ").Append(ProcessRunner.StatusName(metric.Status)).Append('\n');
         }
-        FileManager.WriteFile(Path.Combine(dir, FileManager.InfoFile), info.ToString());
-        if (FileManager.WriteTestChecksumManifest(dir, out int checksumCount, out string? checksumError))
-            log.Line($"Đã cập nhật SHA-256 cho {checksumCount} file test.");
-        else log.Line("  ! " + checksumError);
-        log.Line("KẾT QUẢ: " + StatusLine(status));
         result.Status = status;
         result.Report = rep;
         result.Cancelled = rep.Cancelled;
-        if (!rep.Cancelled && DecideZip(zip, status, zipIncomplete, log) && ZipTestFolder(dir, st, log, out var zp))
+        if (!FileManager.WriteFile(Path.Combine(dir, FileManager.InfoFile), info.ToString(), out string? infoError))
+        {
+            result.ExitCode = 2;
+            result.Error = infoError ?? "Không ghi được file thông tin bộ test.";
+            log.Line("LỖI: " + result.Error);
+            return result;
+        }
+        if (FileManager.WriteTestChecksumManifest(dir, out int checksumCount, out string? checksumError))
+            log.Line($"Đã cập nhật SHA-256 cho {checksumCount} file test.");
+        else
+        {
+            result.ExitCode = 2;
+            result.Error = checksumError ?? "Không cập nhật được manifest SHA-256.";
+            log.Line("LỖI: " + result.Error);
+            return result;
+        }
+        log.Line("KẾT QUẢ: " + StatusLine(status));
+        if (!rep.Cancelled && DecideZip(zip, status, zipIncomplete, log))
+        {
+            if (!ZipTestFolder(dir, st, log, out var zp))
+            {
+                result.ExitCode = 2;
+                result.Error = "Không tạo hoặc xác minh được ZIP test.";
+                return result;
+            }
             result.ZipPath = zp;
+        }
         result.ExitCode = status == SetStatus.Incomplete ? 1 : 0;
         return result;
     }

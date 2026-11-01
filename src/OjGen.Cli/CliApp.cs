@@ -53,7 +53,8 @@ internal static class CliApp
         s.Append("  --resume             Lưu checkpoint từ đầu hoặc tiếp tục; giữ nguyên seed và mọi tùy chọn cấu hình\n");
         s.Append("  --solution FILE      Lời giải (.c/.cpp, .py, .java, .kt, .pas/.pp, .cs, .rs, .go, .ojrun.json hoặc executable) tạo file .out\n");
         s.Append("  --out DIR            Thư mục chứa test (mặc định output/<dạng>)\n");
-        s.Append("  --force              Ghi đè test cũ trong thư mục (mặc định: tự tạo thư mục mới <tên>_2, _3...)\n");
+        s.Append("  --force              Ghi đè bộ test và metadata OjGen cũ (kể cả bản nháp statement); giữ file khác\n");
+        s.Append("                       (mặc định: dùng thư mục mới <tên>_2, _3... nếu đã có test/metadata/ZIP)\n");
         s.Append("  --no-zip             Không tạo file ZIP (mặc định có tạo khi bộ test hoàn chỉnh hoặc chỉ có input)\n");
         s.Append("  --zip-incomplete     Vẫn tạo ZIP khi lời giải lỗi ở một số test\n");
         s.Append("  --rebuild            Biên dịch lại lời giải dù mã nguồn không đổi\n");
@@ -416,6 +417,18 @@ internal static class CliApp
             {
                 if (!a.Kv.TryGetValue("problem", out string? problemId)) throw new InvalidDataException("--preset-save cần --problem <dạng>.");
                 var problem = Problems.Find(problemId) ?? throw new InvalidDataException("Không tìm thấy khuôn bài: " + problemId);
+                var supportedOptions = new HashSet<string>(StringComparer.Ordinal)
+                {
+                    "preset-save", "preset-dir", "problem", "plan", "coverage-required", "seed", "tests",
+                    "solution", "validator", "checker", "checker-args", "checker-timeout", "contract-suite",
+                    "compare-solution", "json-report",
+                };
+                supportedOptions.UnionWith(problem.Params.Select(parameter => parameter.Key));
+                string? unsupportedOption = a.Kv.Keys.FirstOrDefault(key => !supportedOptions.Contains(key));
+                if (unsupportedOption != null)
+                    throw new InvalidDataException($"--preset-save không hỗ trợ tùy chọn --{unsupportedOption}.");
+                if (a.Flags.Count > 0)
+                    throw new InvalidDataException("--preset-save không nhận tùy chọn dạng cờ.");
                 TestPlanProfile plan = a.Kv.TryGetValue("plan", out string? planPath) ? TestPlanProfile.Load(planPath) : new TestPlanProfile { ProblemId = problem.Id };
                 if (!string.Equals(plan.ProblemId, problem.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("ProblemId trong --plan không khớp --problem.");
                 var requiredTags = plan.RequiredCoverageTags?.ToList() ?? new List<string>();
@@ -430,6 +443,13 @@ internal static class CliApp
                 {
                     if (!a.Kv.TryGetValue(parameter.Key, out string? raw)) continue;
                     if (parameter.Type == ParamType.Text) config.SetText(parameter.Key, raw);
+                    else if (parameter.Type == ParamType.Bool)
+                    {
+                        string value = raw.ToLowerInvariant();
+                        if (value is "1" or "true" or "yes" or "y") config.Set(parameter.Key, 1);
+                        else if (value is "0" or "false" or "no" or "n") config.Set(parameter.Key, 0);
+                        else throw new InvalidDataException($"--{parameter.Key} chỉ nhận 0 hoặc 1.");
+                    }
                     else if (Util.ParseLL(raw, out long number)) config.Set(parameter.Key, number);
                     else throw new InvalidDataException($"Tham số --{parameter.Key} không phải số nguyên hợp lệ.");
                 }
@@ -443,6 +463,15 @@ internal static class CliApp
                 int count = 10;
                 if (a.Kv.TryGetValue("tests", out string? countText) && (!int.TryParse(countText, out count) || count < 1 || count > Generator.MaxTests))
                     throw new InvalidDataException($"--tests phải trong [1, {Generator.MaxTests}].");
+                int checkerTimeout = 0;
+                if (a.Kv.TryGetValue("checker-timeout", out string? checkerTimeoutText))
+                {
+                    if (!int.TryParse(checkerTimeoutText, out checkerTimeout) || checkerTimeout is < 1 or > 3600000)
+                        throw new InvalidDataException("--checker-timeout phải là số nguyên trong [1, 3600000] ms.");
+                    if (!a.Kv.ContainsKey("checker")) throw new InvalidDataException("--checker-timeout cần đi cùng --checker.");
+                }
+                if (a.Kv.ContainsKey("checker-args") && !a.Kv.ContainsKey("checker"))
+                    throw new InvalidDataException("--checker-args cần đi cùng --checker.");
                 var preset = new AuthoringPreset
                 {
                     Name = presetName, ProblemId = problem.Id, TestCount = plan.Groups.Count > 0 ? plan.TotalTestCount : count,
@@ -450,12 +479,16 @@ internal static class CliApp
                     Seed = seed, SeedPolicy = seed.HasValue ? "Fixed" : "Random", TestPlan = plan,
                     ValidatorPath = a.Kv.GetValueOrDefault("validator", ""), CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
                     CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
-                    CheckerTimeoutMs = a.Kv.TryGetValue("checker-timeout", out string? timeoutText) && int.TryParse(timeoutText, out int timeout) ? timeout : 0,
+                    CheckerTimeoutMs = checkerTimeout,
                     ContractSuitePath = a.Kv.GetValueOrDefault("contract-suite", ""),
+                    CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
                     RequiredCoverageTags = requiredTags,
                     Ints = new(config.Ints), Texts = new(config.Texts),
                 };
                 string saved = AuthoringPresetStore.Save(preset, a.Kv.GetValueOrDefault("preset-dir"));
+                if (a.Kv.TryGetValue("json-report", out string? reportPath) &&
+                    !WriteJsonReport(reportPath, new { exitCode = 0, preset = saved, preset.Name, preset.ProblemId, preset.TestCount }, out string? jsonError))
+                    throw new IOException(jsonError ?? "Không ghi được JSON report.");
                 Console.Out.WriteLine("Đã lưu preset: " + saved);
                 return 0;
             }

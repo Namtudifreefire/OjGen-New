@@ -988,7 +988,7 @@ public partial class MainWindow : Window
         if (!spec.ResumeGeneration && policy == ExistingPolicy.Overwrite && JobPlanner.OutDirHasData(spec.OutDir))
         {
             var ask = MessageBox.Show(this,
-                $"Thư mục\n{spec.OutDir}\nđã có test. Các file .inp, .out, ojgen_info.txt, SHA256SUMS.txt và file .zip cùng tên sẽ bị XÓA rồi tạo lại.\n\nTiếp tục?",
+                $"Thư mục\n{spec.OutDir}\nđã có dữ liệu bộ test. Khi ghi đè, OjGen sẽ xóa các file .inp/.out, metadata của bộ test (ojgen_info.txt, SHA256SUMS.txt, checkpoint, provenance, báo cáo audit, PACKAGE.txt, PACKAGE_SHA256SUMS.txt, problem.ojdraft.json) và file .zip cùng tên. File khác sẽ được giữ lại.\n\nTiếp tục?",
                 "Xác nhận ghi đè", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             if (ask != MessageBoxResult.Yes) return;
         }
@@ -1110,7 +1110,7 @@ public partial class MainWindow : Window
             if (review.ShowDialog() != true) break;
             if (queued.Policy == ExistingPolicy.Overwrite && JobPlanner.OutDirHasData(job.OutDir))
             {
-                var answer = MessageBox.Show(this, $"Thư mục\n{job.OutDir}\nđã có test và sẽ bị ghi đè. Tiếp tục mục này?",
+                var answer = MessageBox.Show(this, $"Thư mục\n{job.OutDir}\nđã có dữ liệu bộ test. File .inp/.out, metadata của bộ test (bao gồm bản nháp problem.ojdraft.json) và file .zip cùng tên sẽ bị xóa; file khác được giữ lại. Tiếp tục mục này?",
                     "Xác nhận hàng đợi", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
                 if (answer != MessageBoxResult.Yes) break;
             }

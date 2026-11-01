@@ -37,8 +37,27 @@ public static class ProcessRunner
     private const uint SEM_FAILCRITICALERRORS = 0x0001;
     private const uint SEM_NOGPFAULTERRORBOX = 0x0002;
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessMemoryCounters
+    {
+        public uint Size;
+        public uint PageFaultCount;
+        public UIntPtr PeakWorkingSetSize;
+        public UIntPtr WorkingSetSize;
+        public UIntPtr QuotaPeakPagedPoolUsage;
+        public UIntPtr QuotaPagedPoolUsage;
+        public UIntPtr QuotaPeakNonPagedPoolUsage;
+        public UIntPtr QuotaNonPagedPoolUsage;
+        public UIntPtr PagefileUsage;
+        public UIntPtr PeakPagefileUsage;
+    }
+
     [DllImport("kernel32.dll")]
     private static extern uint SetErrorMode(uint mode);
+
+    [DllImport("psapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessMemoryInfo(IntPtr process, ref ProcessMemoryCounters counters, uint size);
 
     static ProcessRunner()
     {
@@ -59,6 +78,25 @@ public static class ProcessRunner
         RunStatus.Cancelled => "Đã hủy",
         _ => "?",
     };
+
+    private static ulong PeakWorkingSetBytes(Process process)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var counters = new ProcessMemoryCounters
+                {
+                    Size = (uint)Marshal.SizeOf<ProcessMemoryCounters>(),
+                };
+                if (GetProcessMemoryInfo(process.Handle, ref counters, counters.Size))
+                    return counters.PeakWorkingSetSize.ToUInt64();
+            }
+            catch (Exception) { }
+        }
+        try { return (ulong)Math.Max(process.PeakWorkingSet64, 0); }
+        catch (Exception) { return 0; }
+    }
 
     private static string NtStatusText(uint code) => code switch
     {
@@ -282,16 +320,20 @@ public static class ProcessRunner
                 long ms = sw.ElapsedMilliseconds;
                 long remaining = lim.TimeoutMs - ms;
                 if (remaining <= 0) { res.Status = RunStatus.Timeout; break; }
-                int waitMs = (int)Math.Min(20, remaining);
+                // When the user asks for a memory cap, poll more frequently: many solutions
+                // finish before the normal 100 ms memory sampling period and Windows may
+                // no longer expose their peak working set once they have exited.
+                int pollIntervalMs = lim.MemoryBytes > 0 ? 5 : 20;
+                int waitMs = (int)Math.Min(pollIntervalMs, remaining);
                 if (p.WaitForExit(waitMs)) { exited = true; break; }
                 ms = sw.ElapsedMilliseconds;
                 if (ms >= nextMemCheck)
                 {
-                    nextMemCheck = ms + 100;
+                    nextMemCheck = ms + (lim.MemoryBytes > 0 ? 5 : 100);
                     try
                     {
                         p.Refresh();
-                        memUsed = (ulong)Math.Max(p.PeakWorkingSet64, 0);
+                        memUsed = PeakWorkingSetBytes(p);
                         if (memUsed > res.PeakMemoryBytes) res.PeakMemoryBytes = memUsed;
                         if (lim.MemoryBytes > 0 && memUsed > lim.MemoryBytes) { memExceeded = true; break; }
                     }
@@ -305,6 +347,18 @@ public static class ProcessRunner
             }
             res.ElapsedMs = sw.ElapsedMilliseconds;
             try { Task.WaitAll(new[] { pumpIn, pumpOut, pumpErr }, 2000); } catch (Exception) { }
+
+            // A short-lived solution may exit before the first 100 ms polling interval.
+            // Sample the OS-reported peak after exit too, otherwise both the memory report
+            // and the configured limit could silently miss its entire run.
+            try
+            {
+                p.Refresh();
+                memUsed = PeakWorkingSetBytes(p);
+                if (memUsed > res.PeakMemoryBytes) res.PeakMemoryBytes = memUsed;
+                if (lim.MemoryBytes > 0 && memUsed > lim.MemoryBytes) memExceeded = true;
+            }
+            catch (Exception) { }
 
             int code = 0;
             try { code = p.ExitCode; } catch (Exception) { }
