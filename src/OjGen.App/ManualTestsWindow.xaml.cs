@@ -92,15 +92,9 @@ public partial class ManualTestsWindow : Window
         if (_tests.Any(test => !ReferenceEquals(test, _current) && string.Equals(test.Name.Trim(), txtName.Text.Trim(), StringComparison.OrdinalIgnoreCase)))
             return "Tên test đã được dùng; hãy chọn tên khác.";
         if (Generator.ValidateFullConfig(_problem, config) is { } configError) return configError;
-        string input = NormalizeInput(txtInput.Text);
+        string input = ManualTestSpec.NormalizeInput(txtInput.Text);
         if (_problem.ValidateInput(input, config) is { } inputError) return inputError;
         return null;
-    }
-
-    private static string NormalizeInput(string input)
-    {
-        string normalized = input.Replace("\r\n", "\n").Replace('\r', '\n');
-        return normalized.Length > 0 && normalized[^1] != '\n' ? normalized + "\n" : normalized;
     }
 
     private bool SaveCurrent()
@@ -119,8 +113,8 @@ public partial class ManualTestsWindow : Window
             _tests.Add(_current);
         }
         _current.Name = txtName.Text.Trim();
-        _current.Input = NormalizeInput(txtInput.Text);
-        _current.ExpectedOutput = NormalizeInput(txtOutput.Text);
+        _current.Input = ManualTestSpec.NormalizeInput(txtInput.Text);
+        _current.ExpectedOutput = ManualTestSpec.NormalizeInput(txtOutput.Text);
         _current.IsSample = chkSample.IsChecked == true;
         _current.ConfigName = choice.Name;
         _current.Cfg = config;

@@ -159,6 +159,11 @@ public partial class MainWindow : Window
 
     private void ApplyProject(OjProjectDocument project)
     {
+        IReadOnlyList<string> validationErrors = OjProjectValidator.ValidateForOpen(project);
+        if (validationErrors.Count > 0)
+            throw new InvalidDataException($"Dự án có {validationErrors.Count} vấn đề cần sửa:\n" +
+                string.Join("\n", validationErrors.Select(error => "• " + error)));
+
         Problem problem = Problems.Find(project.ProblemId) ?? throw new InvalidDataException("Không tìm thấy khuôn bài trong dự án.");
         Config config = problem.DefaultConfig();
         foreach (var parameter in problem.Params)

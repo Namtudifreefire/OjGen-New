@@ -53,8 +53,16 @@ internal sealed class OjProjectDocument
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (document == null || document.Version != 1)
             throw new InvalidDataException("File dự án trống hoặc dùng phiên bản không được hỗ trợ.");
-        if (Problems.Find(document.ProblemId) == null)
-            throw new InvalidDataException($"Không tìm thấy khuôn bài '{document.ProblemId}' trong phiên bản OjGen hiện tại.");
+        document.ProblemId ??= "";
+        document.ProjectPath ??= "";
+        document.ProblemName ??= "";
+        document.ProblemCode ??= "";
+        document.Seed ??= "";
+        document.SolutionPath ??= "";
+        document.OutputDirectory ??= "";
+        document.LastTestDirectory ??= "";
+        document.LastGeneratedProblemId ??= "";
+        document.LastGeneratedSolutionPath ??= "";
         document.TestPlan ??= new TestPlanProfile();
         document.ManualTests ??= new List<ProjectManualTest>();
         document.Package ??= new ProjectPackageOptions();
@@ -65,8 +73,6 @@ internal sealed class OjProjectDocument
         document.LastGeneratedPlan ??= new TestPlanProfile();
         document.LastGeneratedManualTests ??= new List<ProjectManualTest>();
         document.LastGeneratedCoverageTags ??= new List<string>();
-        if (document.Statement != null && document.Statement.Version != 1)
-            throw new InvalidDataException("Bản đề trong dự án dùng phiên bản không được hỗ trợ.");
         return document;
     }
 }
@@ -84,7 +90,7 @@ internal sealed class ProjectManualTest
 
     public static ProjectManualTest From(ManualTestSpec test) => new()
     {
-        Name = test.Name, Input = test.Input, ExpectedOutput = test.ExpectedOutput,
+        Name = test.Name, Input = ManualTestSpec.NormalizeInput(test.Input), ExpectedOutput = test.ExpectedOutput,
         GeneratedOutput = test.GeneratedOutput, IsSample = test.IsSample,
         ConfigName = test.ConfigName, Ints = new(test.Cfg.Ints), Texts = new(test.Cfg.Texts),
     };
@@ -102,7 +108,7 @@ internal sealed class ProjectManualTest
         }
         return new ManualTestSpec
         {
-            Name = Name, Input = Input, ExpectedOutput = ExpectedOutput, GeneratedOutput = GeneratedOutput,
+            Name = Name ?? "", Input = ManualTestSpec.NormalizeInput(Input), ExpectedOutput = ExpectedOutput ?? "", GeneratedOutput = GeneratedOutput ?? "",
             IsSample = IsSample, ConfigName = ConfigName, Cfg = config,
         };
     }

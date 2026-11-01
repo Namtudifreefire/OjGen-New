@@ -12,10 +12,17 @@ public sealed class ManualTestSpec
     public string ConfigName { get; set; } = "Cấu hình chung";
     public Config Cfg { get; set; } = new();
 
+    /// <summary>Standardizes manually entered input files to LF and a final newline.</summary>
+    public static string NormalizeInput(string? input)
+    {
+        string normalized = (input ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
+        return normalized.Length > 0 && normalized[^1] != '\n' ? normalized + "\n" : normalized;
+    }
+
     public ManualTestSpec Clone() => new()
     {
         Name = Name,
-        Input = Input,
+        Input = NormalizeInput(Input),
         ExpectedOutput = ExpectedOutput,
         GeneratedOutput = GeneratedOutput,
         IsSample = IsSample,

@@ -15,6 +15,7 @@ internal sealed class ProblemAuthoringDocument
     public string Code { get; set; } = "";
     public int TimeLimitMs { get; set; } = 2000;
     public int MemoryLimitMb { get; set; } = 256;
+    public bool LimitsConfirmed { get; set; }
     public string Description { get; set; } = "";
     public string Input { get; set; } = "";
     public string Output { get; set; } = "";

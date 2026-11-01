@@ -39,6 +39,7 @@ public partial class StatementEditorWindow : Window
         txtCode.Text = Document.Code;
         txtTime.Text = Document.TimeLimitMs.ToString();
         txtMemory.Text = Document.MemoryLimitMb.ToString();
+        chkLimitsConfirmed.IsChecked = Document.LimitsConfirmed;
         txtDescription.Text = Document.Description;
         txtInput.Text = Document.Input;
         txtOutput.Text = Document.Output;
@@ -77,6 +78,7 @@ public partial class StatementEditorWindow : Window
         Document.Code = txtCode.Text.Trim();
         Document.TimeLimitMs = int.TryParse(txtTime.Text, out int time) ? time : 0;
         Document.MemoryLimitMb = int.TryParse(txtMemory.Text, out int memory) ? memory : 0;
+        Document.LimitsConfirmed = chkLimitsConfirmed.IsChecked == true;
         Document.Description = txtDescription.Text;
         Document.Input = txtInput.Text;
         Document.Output = txtOutput.Text;
@@ -95,6 +97,14 @@ public partial class StatementEditorWindow : Window
     private void Document_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_loading || !IsLoaded) return;
+        UpdateDocument();
+        _previewTimer.Stop();
+        _previewTimer.Start();
+    }
+
+    private void LimitsConfirmed_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
         UpdateDocument();
         _previewTimer.Stop();
         _previewTimer.Start();
@@ -146,6 +156,7 @@ public partial class StatementEditorWindow : Window
             _loading = true;
             txtName.Text = Document.Name; txtCode.Text = Document.Code;
             txtTime.Text = Document.TimeLimitMs.ToString(); txtMemory.Text = Document.MemoryLimitMb.ToString();
+            chkLimitsConfirmed.IsChecked = Document.LimitsConfirmed;
             txtDescription.Text = Document.Description; txtInput.Text = Document.Input; txtOutput.Text = Document.Output;
             txtConstraints.Text = Document.Constraints; txtExamples.Text = Document.Examples;
             _loading = false;

@@ -13,6 +13,21 @@ internal sealed class StatementCheckResult
 internal static class StatementConsistencyChecker
 {
     private static string NormalizeOutput(string text) => string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    private static string NormalizeInputForComparison(string text) => ManualTestSpec.NormalizeInput(text).TrimEnd('\n');
+
+    private sealed record ExamplePair(string Input, string Output);
+
+    private static List<ExamplePair> ParseExamplePairs(string examples)
+    {
+        const string fence = "```";
+        string pattern = $@"(?:^|\r?\n)[ \t]*(?:#{{1,6}}[ \t]+[^\r\n]*\r?\n[ \t]*)?(?:Input|Dữ liệu vào)[ \t]*:?\s*\r?\n[ \t]*{Regex.Escape(fence)}[^\r\n]*\r?\n(?<input>.*?)\r?\n[ \t]*{Regex.Escape(fence)}\s*(?:Output|Dữ liệu ra)[ \t]*:?\s*\r?\n[ \t]*{Regex.Escape(fence)}[^\r\n]*\r?\n(?<output>.*?)\r?\n[ \t]*{Regex.Escape(fence)}";
+        return Regex.Matches(examples, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline)
+            .Cast<Match>()
+            .Select(match => new ExamplePair(
+                NormalizeInputForComparison(match.Groups["input"].Value),
+                match.Groups["output"].Value.TrimEnd('\r', '\n')))
+            .ToList();
+    }
 
     public static StatementCheckResult Check(ProblemAuthoringDocument document, Problem problem, Config config,
                                              IReadOnlyList<ManualTestSpec> markedSamples)
@@ -25,6 +40,8 @@ internal static class StatementConsistencyChecker
             result.Errors.Add("Mã bài chỉ được gồm chữ không dấu, số, dấu gạch ngang hoặc gạch dưới (tối đa 64 ký tự).");
         if (document.TimeLimitMs < 1) result.Errors.Add("Thời gian phải lớn hơn 0 ms.");
         if (document.MemoryLimitMb < 1) result.Errors.Add("Bộ nhớ phải lớn hơn 0 MB.");
+        if (!document.LimitsConfirmed)
+            result.Warnings.Add("Chưa xác nhận giới hạn thời gian và bộ nhớ từ đề gốc; hãy đối chiếu trước khi phát hành.");
         if (document.Description.Trim().Length == 0) result.Errors.Add("Chưa viết phần đề bài.");
         else if (document.Description.Trim().Equals("Mô tả ý tưởng và yêu cầu của bài toán tại đây.", StringComparison.OrdinalIgnoreCase))
             result.Errors.Add("Phần đề bài vẫn là nội dung gợi ý mặc định.");
@@ -42,20 +59,19 @@ internal static class StatementConsistencyChecker
         string statementText = string.Join("\n", document.Description, document.Input, document.Output, document.Constraints, document.Examples);
         if (!Regex.IsMatch(statementText, @"\bO\s*\(", RegexOptions.IgnoreCase))
             result.Warnings.Add("Chưa thấy độ phức tạp dạng O(...); cân nhắc ghi để người giải hiểu giới hạn thời gian.");
-        string codeFence = new string((char)96, 3);
-        if (!document.Examples.Contains(codeFence) && markedSamples.Count > 0)
-            result.Warnings.Add("Ví dụ chưa có code fence Markdown; định dạng này giúp giữ nguyên khoảng trắng input/output.");
-        string fencePattern = Regex.Escape(codeFence) + @"[^\n]*\n(?<body>.*?)" + Regex.Escape(codeFence);
-        var exampleBlocks = Regex.Matches(document.Examples, fencePattern, RegexOptions.Singleline)
-            .Cast<Match>().Select(match => match.Groups["body"].Value.Trim()).ToList();
-        if (exampleBlocks.Count > 0 && markedSamples.Count > 0 &&
-            !markedSamples.Any(sample => exampleBlocks.Any(block => block.Contains(sample.Input.Trim(), StringComparison.Ordinal))))
-            result.Warnings.Add("Không tìm thấy input của test Sample trong các code block của phần Ví dụ.");
+        List<ExamplePair> examplePairs = ParseExamplePairs(document.Examples);
+        if (examplePairs.Count == 0 && markedSamples.Count > 0)
+            result.Warnings.Add("Chưa nhận diện được cặp Input/Output dạng code fence trong Ví dụ; dùng nút Chèn/cập nhật từ test Sample để tạo đúng định dạng.");
         if (document.Input.Trim() != problem.FormatDescription.TrimEnd())
             result.Warnings.Add("Mô tả input đã khác cấu trúc khuôn generator; hãy đối chiếu thủ công.");
         if (markedSamples.Count == 0) result.Warnings.Add("Chưa có test được đánh dấu Sample.");
         if (document.Examples.Trim().StartsWith("<!-- Dùng nút Chèn sample", StringComparison.OrdinalIgnoreCase))
             result.Warnings.Add("Phần Ví dụ vẫn là hướng dẫn mặc định, chưa được thay bằng sample.");
+        foreach (var example in examplePairs)
+        {
+            if (!markedSamples.Any(sample => NormalizeInputForComparison(sample.Input) == example.Input))
+                result.Warnings.Add("Phần Ví dụ có input không còn tương ứng với test nào đang được đánh dấu Sample.");
+        }
         foreach (var sample in markedSamples)
         {
             if (problem.ValidateInput(sample.Input, sample.Cfg) is { } inputError)
@@ -67,11 +83,13 @@ internal static class StatementConsistencyChecker
             else if (sample.ExpectedOutput.Trim().Length > 0 && sample.GeneratedOutput.Trim().Length > 0 &&
                      NormalizeOutput(sample.ExpectedOutput) != NormalizeOutput(sample.GeneratedOutput))
                 result.Errors.Add($"Output sample '{sample.Name}' khác output của lời giải chuẩn.");
-            if (sample.Input.Trim().Length > 0 && !document.Examples.Contains(sample.Input.Trim(), StringComparison.Ordinal))
-                result.Warnings.Add($"Ví dụ '{sample.Name}' chưa được chèn vào phần Ví dụ của đề.");
-            string exampleOutput = sample.ExpectedOutput.Length > 0 ? sample.ExpectedOutput : sample.GeneratedOutput;
-            if (exampleOutput.Trim().Length > 0 && !document.Examples.Contains(exampleOutput.Trim(), StringComparison.Ordinal))
-                result.Warnings.Add($"Output của ví dụ '{sample.Name}' chưa có trong phần Ví dụ của đề.");
+            string normalizedInput = NormalizeInputForComparison(sample.Input);
+            List<ExamplePair> matchingInputs = examplePairs.Where(pair => pair.Input == normalizedInput).ToList();
+            string referenceOutput = sample.GeneratedOutput.Trim().Length > 0 ? sample.GeneratedOutput : sample.ExpectedOutput;
+            if (matchingInputs.Count == 0)
+                result.Warnings.Add($"Cặp Input/Output trong Ví dụ chưa khớp chính xác với test Sample '{sample.Name}'; hãy chèn/cập nhật lại sample.");
+            else if (referenceOutput.Trim().Length > 0 && !matchingInputs.Any(pair => NormalizeOutput(pair.Output) == NormalizeOutput(referenceOutput)))
+                result.Errors.Add($"Output trong Ví dụ của sample '{sample.Name}' khác output của lời giải chuẩn/test đã lưu.");
         }
         return result;
     }
