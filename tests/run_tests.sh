@@ -72,12 +72,13 @@ expect_exit 2 "--resume từ chối output cũ nếu không có lời giải đ�
 if command -v python3 > /dev/null; then
     export OJGEN_TEST_RESUME_COUNTER="$T/resume_counter"
     printf '0\n' > "$OJGEN_TEST_RESUME_COUNTER"
-    expect_exit 1 "--resume fixture dừng sau khi đã có output checkpoint" "${BIN[@]}" --problem single_n --tests 3 --seed 79 --solution "$SOL/resume_counter.py" --resume --no-zip --out "$T/resume_output"
-    [[ $(count "$T/resume_output" .out) -eq 1 && -f "$T/resume_output/.ojgen_output_checkpoint.json" ]] && ok "resume output: giữ output hoàn tất và checkpoint khi test kế tiếp lỗi" || bad "resume output: thiếu output/checkpoint sau lỗi"
+    expect_exit 1 "--resume fixture giữ trạng thái khi một test lỗi" "${BIN[@]}" --problem single_n --tests 3 --seed 79 --solution "$SOL/resume_counter.py" --resume --no-zip --out "$T/resume_output"
+    [[ $(count "$T/resume_output" .out) -eq 2 && -f "$T/resume_output/test01.out" && -f "$T/resume_output/test03.out" && ! -f "$T/resume_output/test02.out" && -f "$T/resume_output/.ojgen_output_checkpoint.json" ]] && ok "resume output: giữ checkpoint và cả output hợp lệ quanh test lỗi" || bad "resume output: thiếu output hợp lệ hoặc checkpoint sau lỗi"
     cp "$T/resume_output/test01.out" "$T/resume_first_output"
+    cp "$T/resume_output/test03.out" "$T/resume_third_output"
     expect_exit 0 "--resume tiếp tục output còn thiếu" "${BIN[@]}" --problem single_n --tests 3 --seed 79 --solution "$SOL/resume_counter.py" --resume --no-zip --out "$T/resume_output"
     [[ $(count "$T/resume_output" .out) -eq 3 && ! -f "$T/resume_output/.ojgen_output_checkpoint.json" ]] && ok "resume output: hoàn tất các output còn thiếu" || bad "resume output: không hoàn tất"
-    cmp -s "$T/resume_first_output" "$T/resume_output/test01.out" && grep -q '^1:' "$T/resume_output/test01.out" && ok "resume output: tái sử dụng output đã khớp hash" || bad "resume output: đã chạy lại output checkpoint"
+    cmp -s "$T/resume_first_output" "$T/resume_output/test01.out" && grep -q '^1:' "$T/resume_output/test01.out" && cmp -s "$T/resume_third_output" "$T/resume_output/test03.out" && grep -q '^3:' "$T/resume_output/test03.out" && grep -q '^4:' "$T/resume_output/test02.out" && ok "resume output: tái sử dụng output checkpoint và chỉ chạy lại test lỗi" || bad "resume output: chạy lại output đã khớp hoặc không tạo lại đúng test lỗi"
     unset OJGEN_TEST_RESUME_COUNTER
 else
     echo "  (bỏ qua: không có python3 để kiểm tra tiếp tục output)"
