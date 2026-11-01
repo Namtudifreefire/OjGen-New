@@ -84,11 +84,21 @@ for f in xamls:
             if a in event_attrs:
                 if not re.search(r'\b' + re.escape(v) + r'\s*\(', code):
                     err(f'{os.path.basename(f)}: thiếu trình xử lý sự kiện {v} ({a})')
-    # tên điều khiển dùng trong code phải có trong XAML
-    used = set(re.findall(r'\b((?:txt|btn|lbl|cmb|chk|mnu|bar|tab|exp)[A-Z][A-Za-z0-9_]*|resultPanel|paramHost)\b', code))
+    # tên điều khiển dùng trong code phải có trong XAML. Bỏ qua biến cục bộ
+    # có tiền tố trùng quy ước tên điều khiển (vd. barWidth/barHeight).
+    control_name_re = re.compile(r'\b((?:txt|btn|lbl|cmb|chk|mnu|bar|tab|exp)[A-Z][A-Za-z0-9_]*|resultPanel|paramHost)\b')
+    used = set(control_name_re.findall(code))
+    local_names = set()
+    local_decl_start = re.compile(r'^\s*(?:const\s+)?(?:var|bool|byte|char|decimal|double|float|int|long|object|string)\s+')
+    for line in code.splitlines():
+        declaration = local_decl_start.match(line)
+        if declaration:
+            declarators = line[declaration.end():]
+            first = re.match(r'\s*([A-Za-z_]\w*)\s*=', declarators)
+            if first: local_names.add(first.group(1))
+            local_names.update(re.findall(r',\s*([A-Za-z_]\w*)\s*=', declarators))
     for n in sorted(used):
-        if n not in names and not n.startswith(('Mnu','Btn','Txt','Cmb')):
-            # có thể là biến cục bộ: chỉ cảnh báo khi tên xuất hiện như thành viên điều khiển
+        if n not in names and n not in local_names and not n.startswith(('Mnu','Btn','Txt','Cmb')):
             err(f'{os.path.basename(cs)}: dùng tên "{n}" không có x:Name trong XAML')
     for n in sorted(names):
         if not re.search(r'\b' + re.escape(n) + r'\b', code) and not f.endswith('App.xaml'):
