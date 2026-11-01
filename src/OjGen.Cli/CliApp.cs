@@ -38,8 +38,8 @@ internal static class CliApp
         s.Append("TÙY CHỌN KHI SINH TEST\n");
         s.Append($"  --tests N            Số lượng test (1..{Generator.MaxTests}, mặc định 10)\n");
         s.Append("  --seed S             Seed ngẫu nhiên (số nguyên không âm). Cùng seed + cùng cấu hình = cùng bộ test\n");
-        s.Append("  --resume             Tiếp tục sinh từ checkpoint; giữ nguyên seed và mọi tùy chọn cấu hình\n");
-        s.Append("  --solution FILE      Lời giải chuẩn (.cpp, .py, .java, .cs hoặc chương trình đã biên dịch) tạo file .out\n");
+        s.Append("  --resume             Lưu checkpoint từ đầu hoặc tiếp tục; giữ nguyên seed và mọi tùy chọn cấu hình\n");
+        s.Append("  --solution FILE      Lời giải (.c/.cpp, .py, .java, .kt, .pas/.pp, .cs, .rs, .go, .ojrun.json hoặc executable) tạo file .out\n");
         s.Append("  --out DIR            Thư mục chứa test (mặc định output/<dạng>)\n");
         s.Append("  --force              Ghi đè test cũ trong thư mục (mặc định: tự tạo thư mục mới <tên>_2, _3...)\n");
         s.Append("  --no-zip             Không tạo file ZIP (mặc định có tạo khi bộ test hoàn chỉnh hoặc chỉ có input)\n");
@@ -68,6 +68,7 @@ internal static class CliApp
         s.Append("  --checker FILE        Chạy checker trên từng input/output trong audit\n");
         s.Append("  --checker-args TEXT   Mẫu argv: {input} {output} {answer} {test}\n");
         s.Append("  --checker-timeout MS  Timeout riêng mỗi lần chạy checker (mặc định theo --timeout)\n");
+        s.Append("  --contract-suite FILE  Ca JSON validator/checker phải chấp nhận hoặc từ chối\n");
         s.Append("  --compare-solution FILE  Đối chiếu với --solution trên 100 test nhỏ\n");
         s.Append("  --allow-audit-warnings  Cho phép ZIP khi chỉ còn cảnh báo (lỗi vẫn chặn)\n");
         s.Append("  Khi --audit-dir, dùng --tests làm số input mong đợi; --seed giúp kiểm tra tái lập.\n");
@@ -88,6 +89,7 @@ internal static class CliApp
         s.Append("  ojgen --problem custom --tests 100 --n 20 --min -1000 --max 1000 --solution sol.cpp\n");
         s.Append("  ojgen --problem custom --tests 50 --bounds \"1:10,50:100,-20:20\" --solution \"D:\\OJ\\bai 1\\sol.cpp\"\n");
         s.Append("  ojgen --problem graph --tests 30 --minN 5 --maxN 1000 --minM 4 --maxM 5000 --connected 1 --weighted 1\n\n");
+        s.Append("  ojgen --problem graph --tests 50 --seed 2026 --density 3 --directed 1 --connected 1  # mật độ dày\n\n");
         s.Append("  ojgen --problem array --tests 30 --seed 2024 --solution sol.cpp --audit --no-zip\n");
         s.Append("  ojgen --audit-dir output/array --problem array --tests 30 --seed 2024 --solution sol.cpp --allow-audit-warnings\n\n");
         s.Append("MÃ THOÁT: 0 = thành công, 1 = có khác biệt khi so sánh package hoặc lời giải lỗi/đã hủy, 2 = lỗi tham số, cấu hình hoặc kiểm định phát hành.\n");
@@ -101,7 +103,7 @@ internal static class CliApp
         "--rebuild", "--timeout", "--max-output-mb", "--memory-mb", "--compiler", "--cxxflags", "--python",
         "--prefix", "--no-compress", "--settings", "--profile", "--plan", "--coverage-required", "--json-report",
         "--audit", "--audit-dir", "--validator", "--checker", "--checker-args", "--checker-timeout",
-        "--compare-solution", "--statement", "--allow-audit-warnings", "--zip-dir", "--regen-out",
+        "--compare-solution", "--statement", "--contract-suite", "--allow-audit-warnings", "--zip-dir", "--regen-out",
         "--import-tests", "--compare-package", "--against", "--completion", "--plugin", "--selftest",
     };
 
@@ -277,7 +279,7 @@ internal static class CliApp
     {
         "problem", "tests", "seed", "solution", "out", "timeout", "max-output-mb", "memory-mb", "compiler", "cxxflags",
         "prefix", "info", "regen-out", "zip-dir", "python", "settings", "topic", "topic-source",
-        "audit-dir", "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "profile", "plan", "coverage-required",
+        "audit-dir", "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "contract-suite", "profile", "plan", "coverage-required",
         "completion", "import-tests", "compare-package", "against", "json-report", "plugin",
     };
 
@@ -431,7 +433,7 @@ internal static class CliApp
 
         bool auditDirMode = a.Kv.ContainsKey("audit-dir");
         bool auditMode = a.Flags.Contains("audit") || auditDirMode;
-        bool auditOptionsSupplied = new[] { "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement" }.Any(a.Kv.ContainsKey);
+        bool auditOptionsSupplied = new[] { "validator", "checker", "checker-args", "checker-timeout", "compare-solution", "statement", "contract-suite" }.Any(a.Kv.ContainsKey);
         if (a.Flags.Contains("audit") && auditDirMode)
         {
             Err("LỖI: dùng --audit khi sinh test hoặc --audit-dir khi kiểm định thư mục có sẵn.");
@@ -442,6 +444,8 @@ internal static class CliApp
             Err("LỖI: tùy chọn audit cần --audit hoặc --audit-dir.");
             return 2;
         }
+        if (a.Kv.TryGetValue("contract-suite", out string? contractPath) && !File.Exists(contractPath))
+        { Err("LỖI: không tìm thấy --contract-suite: " + contractPath); return 2; }
         if (auditDirMode && (a.Kv.ContainsKey("out") || a.Kv.ContainsKey("regen-out") || a.Kv.ContainsKey("zip-dir")))
         {
             Err("LỖI: --audit-dir không dùng cùng --out, --regen-out hoặc --zip-dir.");
@@ -689,6 +693,7 @@ internal static class CliApp
                 CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
                 CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
                 CheckerTimeoutMs = checkerTimeoutMs,
+                ContractSuitePath = a.Kv.GetValueOrDefault("contract-suite", ""),
                 CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
                 StatementPath = a.Kv.GetValueOrDefault("statement", ""),
                 Seed = job.Seed,
@@ -753,6 +758,7 @@ internal static class CliApp
             CheckerPath = a.Kv.GetValueOrDefault("checker", ""),
             CheckerArguments = a.Kv.GetValueOrDefault("checker-args", "{input} {output} {answer}"),
             CheckerTimeoutMs = checkerTimeoutMs,
+            ContractSuitePath = a.Kv.GetValueOrDefault("contract-suite", ""),
             CandidateSolution = a.Kv.GetValueOrDefault("compare-solution", ""),
             StatementPath = a.Kv.GetValueOrDefault("statement", ""),
             Seed = generated.Seed,

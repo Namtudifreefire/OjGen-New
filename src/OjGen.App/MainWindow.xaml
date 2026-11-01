@@ -6,13 +6,18 @@
         MinHeight="620" MinWidth="1000"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
-        Style="{StaticResource SlideInWindow}">
+        Style="{StaticResource SlideInWindow}"
+        PreviewKeyDown="MainWindow_PreviewKeyDown">
 
     <DockPanel>
 
         <!-- ================== MENU ================== -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="Tệp">
+                <MenuItem Header="📄 Lưu dự án" Click="MnuSaveProject_Click" InputGestureText="Ctrl+S" />
+                <MenuItem Header="📄 Lưu dự án thành…" Click="MnuSaveProjectAs_Click" InputGestureText="Ctrl+Shift+S" />
+                <MenuItem Header="📂 Mở dự án…" Click="MnuOpenProject_Click" InputGestureText="Ctrl+O" />
+                <Separator />
                 <MenuItem Header="📂 Mở thư mục output" Click="MnuOpenOutput_Click" />
                 <Separator />
                 <MenuItem x:Name="mnuStatement" Header="✍ Soạn nội dung đề…" Click="MnuStatement_Click" />
@@ -23,10 +28,13 @@
 
             <MenuItem Header="Công cụ">
                 <MenuItem x:Name="mnuQueueAdd" Header="➕ Thêm cấu hình hiện tại vào hàng đợi" Click="MnuQueueAdd_Click" />
+                <MenuItem x:Name="mnuQueueManage" Header="📝 Quản lý / sắp xếp hàng đợi…" Click="MnuQueueManage_Click" IsEnabled="False" />
                 <MenuItem x:Name="mnuQueueRun" Header="▶ Chạy hàng đợi (0)" Click="MnuQueueRun_Click" IsEnabled="False" />
                 <Separator />
                 <MenuItem x:Name="mnuRegen" Header="🔁 Tạo lại output cho thư mục test có sẵn…" Click="MnuRegen_Click" />
                 <MenuItem x:Name="mnuZipDir" Header="📦 Nén ZIP thư mục test có sẵn…" Click="MnuZipDir_Click" />
+                <MenuItem x:Name="mnuInventory" Header="🧾 Kiểm kê / kiểm định test có sẵn…" Click="MnuInventory_Click" />
+                <MenuItem x:Name="mnuSolutionMatrix" Header="🧪 So sánh nhiều lời giải trên bộ test…" Click="MnuSolutionMatrix_Click" />
                 <Separator />
                 <MenuItem x:Name="mnuScaffold" Header="🧰 Tạo khung validator/checker…" Click="MnuScaffold_Click" />
                 <Separator />
@@ -194,7 +202,7 @@
                                          AllowDrop="True"
                                          PreviewDragOver="TxtSolution_PreviewDragOver"
                                          Drop="TxtSolution_Drop"
-                                         ToolTip="File .cpp / .py / .exe. Kéo thả file vào đây. Để trống = chỉ tạo file input." />
+                                         ToolTip="C/C++, Python, Java, Kotlin, Pascal, C#, Rust, Go, .ojrun.json hoặc chương trình đã biên dịch. Kéo thả file vào đây. Để trống = chỉ tạo file input." />
                                 <Button Grid.Row="1" Grid.Column="2" Content="Chọn…" Click="BtnBrowseSolution_Click"
                                         Style="{StaticResource OutlineButton}" />
 
@@ -212,6 +220,8 @@
                                               ToolTip="Mặc định: nếu thư mục đã có test thì tạo thư mục mới _2, _3…" />
                                     <CheckBox x:Name="chkRebuild" Content="Biên dịch lại lời giải" Margin="3,3,18,3" />
                                     <CheckBox x:Name="chkZipIncomplete" Content="Vẫn nén khi lời giải lỗi một số test" Margin="3,3,0,3" />
+                                    <CheckBox x:Name="chkResume" Content="Ghi checkpoint / tiếp tục" Margin="3,3,0,3"
+                                              ToolTip="Bật từ đầu để lưu từng input/output. Lần chạy sau chỉ tiếp tục khi cùng seed, cấu hình và lời giải." />
                                 </WrapPanel>
                                 </Grid>
                             </StackPanel>

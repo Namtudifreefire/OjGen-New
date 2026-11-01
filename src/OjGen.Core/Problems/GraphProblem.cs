@@ -32,6 +32,7 @@ public sealed class GraphProblem : Problem
         "  connected = 1: liên thông (có hướng: liên thông yếu), cần m >= n - 1.\n" +
         "  stronglyConnected = 1: đồ thị có hướng liên thông mạnh, cần m >= n; không kết hợp DAG/hai phía.\n" +
         "  dag = 1: có hướng không chu trình.  bipartite = 1: cạnh chỉ nối hai phía.\n" +
+        "  density = 1/2/3: thưa/vừa/dày, tự chọn m theo sức chứa hợp lệ; chỉ dùng với đồ thị đơn.\n" +
         "  Đồ thị đơn vô hướng n đỉnh có tối đa n(n-1)/2 cạnh; có hướng tối đa n(n-1).\n" +
         "Ví dụ (vô hướng, có trọng số):\n  4 3\n  1 2 7\n  2 4 3\n  3 1 10\n";
 
@@ -39,8 +40,19 @@ public sealed class GraphProblem : Problem
     {
         ParamSpec.Int("minN", "Số đỉnh nhỏ nhất (minN)", 2, 1, MaxV),
         ParamSpec.Int("maxN", "Số đỉnh lớn nhất (maxN)", 8, 1, MaxV),
-        ParamSpec.Int("minM", "Số cạnh nhỏ nhất (minM)", 1, 0, MaxE),
-        ParamSpec.Int("maxM", "Số cạnh lớn nhất (maxM)", 10, 0, MaxE),
+        ParamSpec.Int("density", "Mật độ cạnh", 0, 0, 3,
+            "Tự chọn khoảng số cạnh theo n và các ràng buộc cấu trúc; chỉ dùng với đồ thị đơn.",
+            options: new[]
+            {
+                new ParamOption(0, "Tự đặt minM/maxM"),
+                new ParamOption(1, "Thưa"),
+                new ParamOption(2, "Vừa"),
+                new ParamOption(3, "Dày"),
+            }),
+        ParamSpec.Int("minM", "Số cạnh nhỏ nhất (minM)", 1, 0, MaxE, "Chỉ dùng khi mật độ = tự đặt.",
+            visibleWhen: c => c.I("density") == 0),
+        ParamSpec.Int("maxM", "Số cạnh lớn nhất (maxM)", 10, 0, MaxE, "Chỉ dùng khi mật độ = tự đặt.",
+            visibleWhen: c => c.I("density") == 0),
         ParamSpec.Bool("directed", "Đồ thị có hướng?", false),
         ParamSpec.Bool("simple", "Đồ thị đơn (không khuyên, không cạnh lặp)?", true),
         ParamSpec.Bool("connected", "Bắt buộc liên thông?", false),
@@ -92,13 +104,41 @@ public sealed class GraphProblem : Problem
         return c.B("directed") && !c.B("dag") ? cross * 2 : cross;
     }
 
+    private static long PercentCeiling(ulong value, ulong percent) =>
+        checked((long)((value * percent + 99) / 100));
+
+    private static (long Low, long High) DensityEdges(Config c, long n)
+    {
+        ulong capacity = MaxEdgesAllowed(c, n);
+        long max = checked((long)capacity);
+        long required = c.B("stronglyConnected") ? n : c.B("connected") ? Math.Max(0, n - 1) : 0;
+        long low, high;
+        switch (c.I("density"))
+        {
+            case 1: // Thưa: tối đa khoảng ba cạnh mỗi đỉnh.
+                low = required;
+                high = Math.Min(max, Math.Max(required, checked(n * 3)));
+                break;
+            case 2: // Vừa: khoảng 20–50% sức chứa.
+                low = Math.Max(required, PercentCeiling(capacity, 20));
+                high = Math.Min(max, Math.Max(low, PercentCeiling(capacity, 50)));
+                break;
+            case 3: // Dày: từ 75% đến sức chứa tối đa.
+                low = Math.Max(required, PercentCeiling(capacity, 75));
+                high = max;
+                break;
+            default:
+                return (c.I("minM"), c.I("maxM"));
+        }
+        return (low, high);
+    }
+
     /// <summary>Miền số cạnh hợp lệ với n đỉnh. Trả về false nếu rỗng.</summary>
     private static bool EdgeRange(Config c, long n, out long lo, out long hi)
     {
-        lo = c.I("minM");
+        (lo, hi) = c.I("density") == 0 ? (c.I("minM"), c.I("maxM")) : DensityEdges(c, n);
         if (c.B("connected")) lo = Math.Max(lo, n - 1);
         if (c.B("stronglyConnected")) lo = Math.Max(lo, n);
-        hi = c.I("maxM");
         if (c.B("simple"))
         {
             ulong me = MaxEdgesAllowed(c, n);
@@ -109,10 +149,25 @@ public sealed class GraphProblem : Problem
         return lo <= hi;
     }
 
+    /// <summary>Effective m bounds for a group's n range, including the automatic density mode.</summary>
+    public bool TryGetEffectiveEdgeBounds(Config c, out long minEdges, out long maxEdges)
+    {
+        minEdges = long.MaxValue;
+        maxEdges = long.MinValue;
+        for (long n = c.I("minN"); n <= c.I("maxN"); n++)
+        {
+            if (!EdgeRange(c, n, out long low, out long high)) continue;
+            minEdges = Math.Min(minEdges, low);
+            maxEdges = Math.Max(maxEdges, high);
+        }
+        return maxEdges >= minEdges;
+    }
+
     public override string? ValidateConfig(Config c)
     {
         if (c.I("minN") > c.I("maxN")) return "minN phải <= maxN.";
-        if (c.I("minM") > c.I("maxM")) return "minM phải <= maxM.";
+        if (c.I("density") == 0 && c.I("minM") > c.I("maxM")) return "minM phải <= maxM.";
+        if (c.I("density") != 0 && !c.B("simple")) return "Chế độ mật độ cần bật đồ thị đơn (simple = 1).";
         if (c.B("weighted") && c.I("minW") > c.I("maxW")) return "minW phải <= maxW.";
         if (c.B("dag") && !c.B("directed")) return "DAG cần bật directed = 1.";
         if (c.B("stronglyConnected") && !c.B("directed")) return "Liên thông mạnh cần bật directed = 1.";
@@ -120,7 +175,9 @@ public sealed class GraphProblem : Problem
         if (c.B("stronglyConnected") && c.B("bipartite")) return "Kết hợp stronglyConnected + bipartite hiện chưa được hỗ trợ; hãy tắt một ràng buộc.";
         for (long n = c.I("minN"); n <= c.I("maxN"); n++)
             if (EdgeRange(c, n, out _, out _)) return null;
-        string why = "Không có số đỉnh n nào trong [minN, maxN] cho phép số cạnh trong [minM, maxM].";
+        string why = c.I("density") == 0
+            ? "Không có số đỉnh n nào trong [minN, maxN] cho phép số cạnh trong [minM, maxM]."
+            : "Không có số đỉnh n nào thỏa chế độ mật độ cạnh và các ràng buộc đã chọn.";
         if (c.B("simple"))
             why += "\n  Đồ thị đơn " + (c.B("directed") ? "có hướng" : "vô hướng") + " với maxN = " +
                    Util.LL(c.I("maxN")) + " đỉnh có tối đa " +
@@ -564,6 +621,9 @@ public sealed class GraphProblem : Problem
     {
         ulong per = 2 * (ulong)Util.LL(c.I("maxN")).Length + 2;
         if (c.B("weighted")) per += Util.MaxDigits(c.I("minW"), c.I("maxW")) + 1;
-        return (ulong)c.I("maxM") * per + 24;
+        ulong maxEdges = c.I("density") == 0
+            ? (ulong)c.I("maxM")
+            : (ulong)DensityEdges(c, c.I("maxN")).High;
+        return maxEdges * per + 24;
     }
 }

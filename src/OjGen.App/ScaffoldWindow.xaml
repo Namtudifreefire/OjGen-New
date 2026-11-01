@@ -23,7 +23,11 @@
         </Border>
         <DockPanel Grid.Row="3" Margin="0,12,0,0">
             <TextBlock x:Name="lblHint" Style="{StaticResource HintText}" TextWrapping="Wrap" VerticalAlignment="Center" />
-            <Button DockPanel.Dock="Right" Content="Đóng" Click="BtnClose_Click" Padding="18,7" Margin="10,0,0,0" IsCancel="True" Style="{StaticResource OutlineButton}" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Tạo contract theo khuôn…" Click="BtnCreateContract_Click" Padding="11,7" Margin="8,0,0,0" Style="{StaticResource OutlineButton}" />
+                <Button Content="Chạy thử validator…" Click="BtnTestValidator_Click" Padding="11,7" Margin="5,0,0,0" Style="{StaticResource OutlineButton}" />
+                <Button Content="Đóng" Click="BtnClose_Click" Padding="18,7" Margin="5,0,0,0" IsCancel="True" Style="{StaticResource OutlineButton}" />
+            </StackPanel>
         </DockPanel>
     </Grid>
 </Window>

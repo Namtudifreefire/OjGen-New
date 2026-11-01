@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Text;
 using System;
@@ -6,7 +7,9 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using OjGen.Core;
 using OjGen.Gui.Services;
@@ -38,13 +41,21 @@ public partial class MainWindow : Window
     private List<TestGroupSpec> _testGroups = new();
     private List<ManualTestSpec> _manualTests = new();
     private List<string> _requiredCoverageTags = new();
-    private readonly List<(JobSpec Spec, ExistingPolicy Policy)> _jobQueue = new();
+    private readonly ObservableCollection<QueuedJobEntry> _jobQueue = new();
+    private readonly string _queueStatePath = JobQueuePersistence.DefaultPath;
+    private readonly DispatcherTimer _projectAutosaveTimer = new() { Interval = TimeSpan.FromSeconds(10) };
+    private string _activeProjectPath = "";
+    private string _projectAutosavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OjGen", "Recovery", "session.ojproject");
+    private ProjectPackageOptions _projectPackage = new();
 
     private void RefreshQueueMenu()
     {
         mnuQueueRun.Header = $"▶ Chạy hàng đợi ({_jobQueue.Count})";
         mnuQueueRun.IsEnabled = !_running && !_reviewing && _jobQueue.Count > 0;
+        mnuQueueManage.IsEnabled = !_running && !_reviewing && _jobQueue.Count > 0;
         mnuQueueAdd.IsEnabled = !_running && !_reviewing;
+        PersistQueue();
     }
 
     public MainWindow()
@@ -73,6 +84,227 @@ public partial class MainWindow : Window
 
         string? warn = ((App)Application.Current).SettingsWarning;
         if (!string.IsNullOrEmpty(warn)) _log.Line(warn);
+        _projectAutosaveTimer.Tick += (_, _) => SaveProjectSnapshot(_projectAutosavePath, quiet: true);
+        _projectAutosaveTimer.Start();
+        RestoreAutosaveOnStartup();
+        RestoreQueue();
+    }
+
+    private OjProjectDocument? CaptureProject()
+    {
+        if (_model == null) return null;
+        Config current = _model.Effective();
+        var project = new OjProjectDocument
+        {
+            ProjectPath = _activeProjectPath,
+            ProblemId = _model.Problem.Id,
+            ProblemName = _problemName,
+            ProblemCode = _problemCode,
+            TestCount = Util.ParseLL(txtTests.Text, out long count) && count > 0 && count <= Generator.MaxTests ? (int)count : 10,
+            Seed = txtSeed.Text,
+            SolutionPath = txtSolution.Text,
+            OutputDirectory = txtOutDir.Text,
+            Zip = chkZip.IsChecked == true,
+            ZipIncomplete = chkZipIncomplete.IsChecked == true,
+            Overwrite = chkOverwrite.IsChecked == true,
+            Rebuild = chkRebuild.IsChecked == true,
+            Resume = chkResume.IsChecked == true,
+            Ints = new(current.Ints),
+            Texts = new(current.Texts),
+            TestPlan = TestPlanProfile.From(_model.Problem, _testGroups, _requiredCoverageTags),
+            ManualTests = _manualTests.Select(ProjectManualTest.From).ToList(),
+            Statement = _authoringDocument?.Clone(),
+            Package = _projectPackage,
+            LastTestDirectory = _lastGeneratedResult?.OutDir ?? _lastGeneratedSpec?.OutDir ?? "",
+        };
+        if (_lastGeneratedSpec is { } last)
+        {
+            project.LastGeneratedCount = last.TestCount;
+            project.LastGeneratedSeed = last.Seed ?? 0;
+            project.LastGeneratedProblemId = last.Problem.Id;
+            project.LastGeneratedSolutionPath = last.SolutionPath;
+            project.LastGeneratedInts = new(last.Cfg.Ints);
+            project.LastGeneratedTexts = new(last.Cfg.Texts);
+            project.LastGeneratedPlan = TestPlanProfile.From(last.Problem, last.Groups, last.RequiredCoverageTags);
+            project.LastGeneratedManualTests = last.ManualTests.Select(ProjectManualTest.From).ToList();
+            project.LastGeneratedCoverageTags = last.RequiredCoverageTags.ToList();
+        }
+        return project;
+    }
+
+    private void SaveProjectSnapshot(string path, bool quiet, bool force = false)
+    {
+        if (!force && (_running || _reviewing)) return;
+        try { CaptureProject()?.Save(path); }
+        catch (Exception ex)
+        {
+            if (!quiet) MessageBox.Show(this, "Không lưu được dự án: " + ex.Message, "Lỗi lưu dự án", MessageBoxButton.OK, MessageBoxImage.Error);
+            else _log.Line("! Không tự lưu được dự án: " + ex.Message);
+        }
+    }
+
+    private void RestoreAutosaveOnStartup()
+    {
+        if (!File.Exists(_projectAutosavePath)) return;
+        var answer = MessageBox.Show(this, "OjGen tìm thấy phiên soạn đề đã tự lưu. Khôi phục phiên này?",
+            "Khôi phục dự án", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes);
+        if (answer != MessageBoxResult.Yes)
+        {
+            try { File.Delete(_projectAutosavePath); } catch (Exception) { }
+            return;
+        }
+        try { ApplyProject(OjProjectDocument.Load(_projectAutosavePath)); _log.Line("Đã khôi phục phiên soạn đề tự lưu."); }
+        catch (Exception ex) { MessageBox.Show(this, "Không khôi phục được phiên tự lưu: " + ex.Message, "Lỗi khôi phục", MessageBoxButton.OK, MessageBoxImage.Warning); }
+    }
+
+    private void ApplyProject(OjProjectDocument project)
+    {
+        Problem problem = Problems.Find(project.ProblemId) ?? throw new InvalidDataException("Không tìm thấy khuôn bài trong dự án.");
+        Config config = problem.DefaultConfig();
+        foreach (var parameter in problem.Params)
+        {
+            if (parameter.Type == ParamType.Text)
+            {
+                if (project.Texts.TryGetValue(parameter.Key, out string? value)) config.SetText(parameter.Key, value);
+            }
+            else if (project.Ints.TryGetValue(parameter.Key, out long value)) config.Set(parameter.Key, value);
+        }
+        if (Generator.ValidateFullConfig(problem, config) is { } invalidConfig)
+            throw new InvalidDataException("Cấu hình trong dự án không hợp lệ: " + invalidConfig);
+        if (project.Statement != null && !string.Equals(project.Statement.ProblemId, problem.Id, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Bản đề trong dự án đang gắn với một khuôn khác.");
+        List<TestGroupSpec> restoredGroups = project.TestPlan.Groups.Count == 0 ? new() : project.TestPlan.ToGroups(problem);
+        List<ManualTestSpec> restoredManualTests = project.ManualTests.Select(test => test.ToSpec(problem)).ToList();
+        foreach (var manual in restoredManualTests)
+        {
+            if (Generator.ValidateFullConfig(problem, manual.Cfg) is { } manualConfigError)
+                throw new InvalidDataException($"Cấu hình test '{manual.Name}' không hợp lệ: {manualConfigError}");
+            if (problem.ValidateInput(manual.Input, manual.Cfg) is { } manualInputError)
+                throw new InvalidDataException($"Test '{manual.Name}' không hợp lệ: {manualInputError}");
+        }
+        JobSpec? restoredLastSpec = null;
+        JobResult? restoredLastResult = null;
+        if (project.LastGeneratedCount > 0 && project.LastGeneratedProblemId == project.ProblemId && Directory.Exists(project.LastTestDirectory))
+        {
+            var generatedConfig = problem.DefaultConfig();
+            foreach (var item in project.LastGeneratedInts) generatedConfig.Set(item.Key, item.Value);
+            foreach (var item in project.LastGeneratedTexts) generatedConfig.SetText(item.Key, item.Value);
+            if (Generator.ValidateFullConfig(problem, generatedConfig) is { } generatedConfigError)
+                throw new InvalidDataException("Cấu hình của bộ test đã tạo không hợp lệ: " + generatedConfigError);
+            List<TestGroupSpec> generatedGroups = project.LastGeneratedPlan.Groups.Count == 0 ? new() : project.LastGeneratedPlan.ToGroups(problem);
+            foreach (var group in generatedGroups)
+                if (Generator.ValidateFullConfig(problem, group.Cfg) is { } groupError)
+                    throw new InvalidDataException($"Nhóm test đã tạo '{group.Name}' không hợp lệ: {groupError}");
+            List<ManualTestSpec> generatedManual = project.LastGeneratedManualTests.Select(test => test.ToSpec(problem)).ToList();
+            foreach (var manual in generatedManual)
+            {
+                if (Generator.ValidateFullConfig(problem, manual.Cfg) is { } manualConfigError)
+                    throw new InvalidDataException($"Cấu hình test đã tạo '{manual.Name}' không hợp lệ: {manualConfigError}");
+                if (problem.ValidateInput(manual.Input, manual.Cfg) is { } manualInputError)
+                    throw new InvalidDataException($"Test đã tạo '{manual.Name}' không hợp lệ: {manualInputError}");
+            }
+            int generatedCount = project.LastGeneratedCount - generatedManual.Count;
+            if (generatedCount < 0 || (generatedGroups.Count > 0 && generatedGroups.Sum(group => group.TestCount) != generatedCount))
+                throw new InvalidDataException("Số test của kế hoạch không khớp bộ test đã tạo.");
+            restoredLastSpec = new JobSpec
+            {
+                Problem = problem, Cfg = generatedConfig, TestCount = project.LastGeneratedCount,
+                GeneratedTestCount = generatedCount, Seed = project.LastGeneratedSeed,
+                SolutionPath = project.LastGeneratedSolutionPath, OutDir = project.LastTestDirectory,
+                ProblemName = project.ProblemName, ProblemCode = project.ProblemCode,
+                Groups = generatedGroups, ManualTests = generatedManual,
+                RequiredCoverageTags = project.LastGeneratedCoverageTags.ToList(),
+            };
+            int inputs = FileManager.ListFilesWithExt(project.LastTestDirectory, ".inp").Count;
+            restoredLastResult = new JobResult
+            {
+                OutDir = project.LastTestDirectory, InputCount = inputs, Seed = project.LastGeneratedSeed,
+                Status = FileManager.ListFilesWithExt(project.LastTestDirectory, ".out").Count >= inputs ? SetStatus.Complete : SetStatus.InputOnly,
+            };
+        }
+
+        _loading = true;
+        cmbAlgorithmTopic.SelectedItem = null;
+        cmbMainCategory.SelectedItem = problem.MainCategory;
+        SetSubtypeOptions(problem.MainCategory, problem.Id);
+        SetProblemModel(problem, config);
+        _problemName = project.ProblemName;
+        _problemCode = project.ProblemCode;
+        txtTests.Text = project.TestCount.ToString();
+        txtTests.IsEnabled = project.TestPlan.Groups.Count == 0;
+        txtSeed.Text = project.Seed;
+        txtSolution.Text = project.SolutionPath;
+        txtOutDir.Text = project.OutputDirectory;
+        chkZip.IsChecked = project.Zip;
+        chkZipIncomplete.IsChecked = project.ZipIncomplete;
+        chkOverwrite.IsChecked = project.Overwrite;
+        chkRebuild.IsChecked = project.Rebuild;
+        chkResume.IsChecked = project.Resume;
+        _testGroups = restoredGroups;
+        _requiredCoverageTags = project.TestPlan.RequiredCoverageTags?.ToList() ?? new();
+        _manualTests = restoredManualTests;
+        _authoringDocument = project.Statement?.Clone();
+        _projectPackage = project.Package ?? new ProjectPackageOptions();
+        _activeProjectPath = project.ProjectPath;
+        lblSetupSummary.Text = $"Bài: {_problemName} · mã {_problemCode} · khuôn {problem.Title}";
+        lblGroupPlan.Text = _testGroups.Count == 0
+            ? "Một cấu hình chung cho toàn bộ test."
+            : $"{_testGroups.Count} nhóm · {_testGroups.Sum(group => group.TestCount)} test: " + string.Join(", ", _testGroups.Select(group => $"{group.Name} ({group.TestCount})"));
+        lblManualTests.Text = _manualTests.Count == 0 ? "Chưa có test nhập tay." : $"{_manualTests.Count} test nhập tay · {_manualTests.Count(test => test.IsSample)} sample";
+
+        _lastGeneratedSpec = restoredLastSpec;
+        _lastGeneratedResult = restoredLastResult;
+        _loading = false;
+        OnFormChanged();
+    }
+
+    private void MnuSaveProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeProjectPath.Length == 0) { MnuSaveProjectAs_Click(sender, e); return; }
+        SaveProjectSnapshot(_activeProjectPath, quiet: false);
+    }
+
+    private void MnuSaveProjectAs_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { Title = "Lưu dự án soạn đề", Filter = "OjGen project (*.ojproject)|*.ojproject", DefaultExt = ".ojproject", AddExtension = true,
+            FileName = _problemCode.Length > 0 ? _problemCode + ".ojproject" : "problem.ojproject" };
+        if (dialog.ShowDialog(this) != true) return;
+        _activeProjectPath = dialog.FileName;
+        SaveProjectSnapshot(dialog.FileName, quiet: false);
+    }
+
+    private void MnuOpenProject_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Mở dự án soạn đề", Filter = "OjGen project (*.ojproject)|*.ojproject|All files (*.*)|*.*", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var project = OjProjectDocument.Load(dialog.FileName);
+            project.ProjectPath = dialog.FileName;
+            ApplyProject(project);
+            _activeProjectPath = dialog.FileName;
+            _log.Line("Đã mở dự án: " + dialog.FileName);
+        }
+        catch (Exception ex) { MessageBox.Show(this, "Không mở được dự án: " + ex.Message, "Lỗi mở dự án", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.S)
+        {
+            MnuSaveProject_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.S)
+        {
+            MnuSaveProjectAs_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O)
+        {
+            MnuOpenProject_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
     }
 
     // ============================================================ DẠNG BÀI / FORM
@@ -221,6 +453,7 @@ public partial class MainWindow : Window
         ZipIncomplete = chkZipIncomplete.IsChecked == true,
         Overwrite = chkOverwrite.IsChecked == true,
         Rebuild = chkRebuild.IsChecked == true,
+        Resume = chkResume.IsChecked == true,
         ProblemName = _problemName,
         ProblemCode = _problemCode,
         Groups = _testGroups,
@@ -350,8 +583,9 @@ public partial class MainWindow : Window
         int sampleCount = samples.Count;
         string parent = Path.GetFullPath(_st.OutputRoot);
         var dialog = new PackageWindow(_authoringDocument!.Name, _authoringDocument.Code, parent, testDirectory,
-            txtSolution.Text, sampleCount, testCount) { Owner = this };
+            txtSolution.Text, sampleCount, testCount, _projectPackage) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } options) return;
+        _projectPackage.Capture(options);
 
         var auditDocument = _authoringDocument.Clone();
         var auditProblem = _model.Problem;
@@ -372,10 +606,12 @@ public partial class MainWindow : Window
             CheckerPath = options.CheckerPath,
             CheckerArguments = options.CheckerArguments,
             CheckerTimeoutMs = options.CheckerTimeoutMs,
+            ContractSuitePath = options.ContractSuitePath,
             CandidateSolution = options.CandidateSolution,
             Seed = auditSeed,
             GeneratedSpec = generatedSpec,
         };
+        options.GeneratedSpec = generatedSpec;
         var auditRun = await RunWork("Kiểm định phát hành", token =>
         {
             audit = ReleaseAuditService.Run(auditOptions, auditDocument, auditProblem,
@@ -433,7 +669,7 @@ public partial class MainWindow : Window
         var dlg = new OpenFileDialog
         {
             Title = "Chọn lời giải chuẩn",
-            Filter = "Lời giải (*.cpp;*.cc;*.cxx;*.py;*.java;*.cs;*.exe)|*.cpp;*.cc;*.cxx;*.c++;*.py;*.java;*.cs;*.exe|Tất cả file (*.*)|*.*",
+            Filter = "Lời giải (*.c;*.cpp;*.cc;*.cxx;*.py;*.java;*.kt;*.pas;*.pp;*.cs;*.rs;*.go;*.exe;*.ojrun.json)|*.c;*.cpp;*.cc;*.cxx;*.c++;*.py;*.java;*.kt;*.pas;*.pp;*.cs;*.rs;*.go;*.exe;*.ojrun.json|Tất cả file (*.*)|*.*",
             CheckFileExists = true,
         };
         if (dlg.ShowDialog(this) == true) txtSolution.Text = dlg.FileName;
@@ -651,7 +887,7 @@ public partial class MainWindow : Window
                          $"Đóng gói ZIP: {(spec.Zip == ZipMode.Yes ? "có" : "không")}";
         var review = new ReviewPlanWindow(summary, sampleInfo, preflight.Valid, preflight.Error) { Owner = this };
         if (review.ShowDialog() != true) return;
-        if (policy == ExistingPolicy.Overwrite && JobPlanner.OutDirHasData(spec.OutDir))
+        if (!spec.ResumeGeneration && policy == ExistingPolicy.Overwrite && JobPlanner.OutDirHasData(spec.OutDir))
         {
             var ask = MessageBox.Show(this,
                 $"Thư mục\n{spec.OutDir}\nđã có test. Các file .inp, .out, ojgen_info.txt, SHA256SUMS.txt và file .zip cùng tên sẽ bị XÓA rồi tạo lại.\n\nTiếp tục?",
@@ -665,7 +901,12 @@ public partial class MainWindow : Window
         var res = await RunWork("Tạo bộ test", token =>
         {
             string dir = job.OutDir;
-            if (!Job.PrepareOutDir(ref dir, policy, log, out string? perr))
+            if (job.ResumeGeneration)
+            {
+                try { Directory.CreateDirectory(dir); }
+                catch (Exception ex) { return new JobResult { ExitCode = 2, Error = "Không tạo được thư mục tiếp tục: " + ex.Message, OutDir = dir }; }
+            }
+            else if (!Job.PrepareOutDir(ref dir, policy, log, out string? perr))
             {
                 log.Line("LỖI: " + perr);
                 return new JobResult { ExitCode = 2, Error = perr, OutDir = dir };
@@ -700,9 +941,41 @@ public partial class MainWindow : Window
             return;
         }
         spec.Seed ??= Generator.RandomSeed();
-        _jobQueue.Add((CloneJobSpec(spec), policy));
+        _jobQueue.Add(new QueuedJobEntry { Spec = CloneJobSpec(spec), Policy = policy });
         _log.Line($"Đã thêm vào hàng đợi: {(spec.ProblemName.Trim().Length > 0 ? spec.ProblemName : spec.Problem.Title)}, {spec.TestCount} test, seed {Util.LL(spec.Seed.Value)}.");
         RefreshQueueMenu();
+    }
+
+    private void MnuQueueManage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_running || _reviewing || _jobQueue.Count == 0) return;
+        new QueueManagerWindow(_jobQueue, PersistQueue) { Owner = this }.ShowDialog();
+        RefreshQueueMenu();
+    }
+
+    private void PersistQueue()
+    {
+        try
+        {
+            if (_jobQueue.Count == 0)
+            {
+                if (File.Exists(_queueStatePath)) File.Delete(_queueStatePath);
+                return;
+            }
+            JobQueuePersistence.Save(_queueStatePath, _jobQueue);
+        }
+        catch (Exception ex) { _log.Line("! Không tự lưu được hàng đợi: " + ex.Message); }
+    }
+
+    private void RestoreQueue()
+    {
+        try
+        {
+            foreach (var item in JobQueuePersistence.Load(_queueStatePath)) _jobQueue.Add(item);
+            if (_jobQueue.Count > 0) _log.Line($"Đã khôi phục {_jobQueue.Count} mục trong hàng đợi.");
+            RefreshQueueMenu();
+        }
+        catch (Exception ex) { _log.Line("! Không khôi phục được hàng đợi đã lưu: " + ex.Message); }
     }
 
     private async void MnuQueueRun_Click(object sender, RoutedEventArgs e)
@@ -746,18 +1019,24 @@ public partial class MainWindow : Window
             JobResult? result = await RunWork($"Hàng đợi · {title}", token =>
             {
                 string dir = job.OutDir;
-                if (!Job.PrepareOutDir(ref dir, queued.Policy, _log, out string? prepareError))
+                if (job.ResumeGeneration)
+                {
+                    try { Directory.CreateDirectory(dir); }
+                    catch (Exception ex) { return new JobResult { ExitCode = 2, Error = "Không tạo được thư mục tiếp tục: " + ex.Message, OutDir = dir }; }
+                }
+                else if (!Job.PrepareOutDir(ref dir, queued.Policy, _log, out string? prepareError))
                     return new JobResult { ExitCode = 2, Error = prepareError, OutDir = dir };
                 job.OutDir = dir;
                 return Job.Run(job, _st, _log, token);
             });
             if (result == null) break;
-            if (!result.Cancelled) _jobQueue.RemoveAt(0);
+            bool completed = !result.Cancelled && result.ExitCode == 0;
+            if (completed) _jobQueue.Remove(queued);
             _lastGeneratedResult = result;
             _lastGeneratedSpec = CloneJobSpec(job);
             ShowResult(result, "Hàng đợi");
             RefreshQueueMenu();
-            if (result.Cancelled || result.ExitCode == 2) break;
+            if (!completed) break;
         }
         RefreshQueueMenu();
     }
@@ -774,6 +1053,7 @@ public partial class MainWindow : Window
         Zip = source.Zip,
         ZipIncomplete = source.ZipIncomplete,
         ForceRebuild = source.ForceRebuild,
+        ResumeGeneration = source.ResumeGeneration,
         ProblemName = source.ProblemName,
         ProblemCode = source.ProblemCode,
         Groups = source.Groups.Select(group => group.Clone()).ToList(),
@@ -951,6 +1231,30 @@ public partial class MainWindow : Window
         else SetResultText("❌ Không tạo được ZIP. Xem tab Nhật ký.", "ErrorBrush", true, false);
     }
 
+    private void MnuInventory_Click(object sender, RoutedEventArgs e)
+    {
+        string directory = _lastGeneratedResult?.OutDir ?? _lastGeneratedSpec?.OutDir ?? "";
+        if (!Directory.Exists(directory))
+        {
+            var dialog = new OpenFolderDialog { Title = "Chọn thư mục test cần kiểm kê" };
+            if (dialog.ShowDialog(this) != true) return;
+            directory = dialog.FolderName;
+        }
+        new TestInventoryWindow(directory, _model?.Problem, _model?.Effective()) { Owner = this }.ShowDialog();
+    }
+
+    private void MnuSolutionMatrix_Click(object sender, RoutedEventArgs e)
+    {
+        string directory = _lastGeneratedResult?.OutDir ?? _lastGeneratedSpec?.OutDir ?? "";
+        if (!Directory.Exists(directory))
+        {
+            var dialog = new OpenFolderDialog { Title = "Chọn thư mục test để so sánh nhiều lời giải" };
+            if (dialog.ShowDialog(this) != true) return;
+            directory = dialog.FolderName;
+        }
+        new SolutionMatrixWindow(directory, _st) { Owner = this }.ShowDialog();
+    }
+
     private async void MnuSelfTest_Click(object sender, RoutedEventArgs e)
     {
         if (_running) return;
@@ -1030,6 +1334,8 @@ public partial class MainWindow : Window
             if (ask != MessageBoxResult.Yes) { e.Cancel = true; return; }
             _cts?.Cancel();
         }
+        _projectAutosaveTimer.Stop();
+        SaveProjectSnapshot(_projectAutosavePath, quiet: true, force: true);
         base.OnClosing(e);
     }
 }

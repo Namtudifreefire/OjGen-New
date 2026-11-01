@@ -67,6 +67,7 @@ internal sealed class CliAuditOptions
     public string CheckerPath { get; init; } = "";
     public string CheckerArguments { get; init; } = "{input} {output} {answer}";
     public int CheckerTimeoutMs { get; init; }
+    public string ContractSuitePath { get; init; } = "";
     public string CandidateSolution { get; init; } = "";
     public string StatementPath { get; init; } = "";
     public ulong? Seed { get; init; }
@@ -218,7 +219,8 @@ internal static class CliReleaseAudit
     }
 
     private static void RunValidator(string path, IReadOnlyList<string> inputs, Problem problem, Config config,
-        JobSpec? generatedSpec, Settings settings, IJobLog log, CliAuditReport report, CancellationToken ct)
+        JobSpec? generatedSpec, IReadOnlyList<ValidatorContractCase>? contractCases,
+        Settings settings, IJobLog log, CliAuditReport report, CancellationToken ct)
     {
         string tempRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "OjGen-Cli-ReleaseAudit"));
         string tempDir = Path.Combine(tempRoot, Guid.NewGuid().ToString("N"));
@@ -248,10 +250,8 @@ internal static class CliReleaseAudit
             if (invalid.Count == 0)
             {
                 report.Add(CliAuditLevel.Warning, "Validator hai chiều", "Không tạo được input sai mà khuôn xác nhận; chỉ kiểm tra input hợp lệ.");
-                report.Add(CliAuditLevel.Pass, "Validator", $"Chấp nhận đủ {inputs.Count} input hợp lệ.");
-                return;
             }
-            for (int i = 0; i < invalid.Count; i++)
+            else for (int i = 0; i < invalid.Count; i++)
             {
                 if (ct.IsCancellationRequested) { report.Cancelled = true; return; }
                 string invalidPath = Path.Combine(tempDir, "invalid_" + (i + 1) + ".inp");
@@ -269,7 +269,34 @@ internal static class CliReleaseAudit
                     return;
                 }
             }
-            report.Add(CliAuditLevel.Pass, "Validator hai chiều", $"Chấp nhận đủ {inputs.Count} input hợp lệ và từ chối {invalid.Count} biến thể sai.");
+            int contractPassed = 0;
+            if (contractCases != null)
+            {
+                foreach (var contractCase in contractCases)
+                {
+                    if (ct.IsCancellationRequested) { report.Cancelled = true; return; }
+                    if (contractCase.ExpectedAccepted && problem.ValidateInput(contractCase.Input, config) is { } schemaError)
+                    {
+                        report.Add(CliAuditLevel.Error, "Validator contract", $"Ca '{contractCase.Name}' được khai báo chấp nhận nhưng input sai theo khuôn: {schemaError}");
+                        return;
+                    }
+                    string casePath = Path.Combine(tempDir, "contract_" + contractPassed.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".inp");
+                    File.WriteAllText(casePath, contractCase.Input, new UTF8Encoding(false));
+                    RunResult run = ProcessRunner.Run(prepared.Argv.Concat(new[] { casePath }).ToList(), casePath,
+                        stdout, stderr, tempDir, limits, ct);
+                    if (run.Status == RunStatus.Cancelled) { report.Cancelled = true; return; }
+                    bool accepted = run.Status == RunStatus.Ok || (run.Status == RunStatus.RuntimeError && run.ExitCode == 42);
+                    bool decisive = accepted || (run.Status == RunStatus.RuntimeError && run.ExitCode != 0);
+                    if (!decisive || accepted != contractCase.ExpectedAccepted)
+                    {
+                        report.Add(CliAuditLevel.Error, "Validator contract", $"Ca '{contractCase.Name}' mong đợi {(contractCase.ExpectedAccepted ? "chấp nhận" : "từ chối")}, thực tế {ProcessRunner.StatusName(run.Status)} (exit {run.ExitCode}).");
+                        return;
+                    }
+                    contractPassed++;
+                }
+            }
+            report.Add(CliAuditLevel.Pass, "Validator hai chiều", $"Chấp nhận đủ {inputs.Count} input hợp lệ và từ chối {invalid.Count} biến thể sai" +
+                (contractCases is { Count: > 0 } ? $"; khớp {contractPassed} ca hợp đồng." : "."));
         }
         catch (Exception ex) { report.Add(CliAuditLevel.Error, "Validator", "Lỗi khi chạy validator: " + ex.Message); }
         finally { DeleteTempChild(tempRoot, tempDir); }
@@ -278,12 +305,23 @@ internal static class CliReleaseAudit
     private static void AuditPackageTools(CliAuditOptions options, IReadOnlyList<string> inputs,
         IJobLog log, CliAuditReport report, CancellationToken ct)
     {
+        ValidationContractSuite? contracts = null;
+        if (options.ContractSuitePath.Trim().Length > 0)
+        {
+            try
+            {
+                contracts = ValidationContractSuite.Load(options.ContractSuitePath);
+                report.Add(CliAuditLevel.Info, "Contract suite", $"Đã nạp {contracts.ValidatorCases.Count} ca validator và {contracts.CheckerCases.Count} ca checker.");
+            }
+            catch (Exception ex) { report.Add(CliAuditLevel.Error, "Contract suite", "Không đọc được contract suite: " + ex.Message); }
+        }
         if (options.ValidatorPath.Trim().Length > 0)
         {
             if (inputs.Count == 0) report.Add(CliAuditLevel.Warning, "Validator", "Không có input để chạy validator.");
             else RunValidator(options.ValidatorPath, inputs, options.Problem, options.Config, options.GeneratedSpec,
-                options.Settings, log, report, ct);
+                contracts?.ValidatorCases, options.Settings, log, report, ct);
         }
+        else if (contracts?.ValidatorCases.Count > 0) report.Add(CliAuditLevel.Error, "Validator contract", "Contract suite có ca validator nhưng chưa chọn --validator.");
         else report.Add(CliAuditLevel.Info, "Validator", "Chưa chọn validator; bước kiểm tra hai chiều được bỏ qua.");
         if (report.Cancelled) return;
 
@@ -294,11 +332,11 @@ internal static class CliReleaseAudit
             {
                 var checker = CheckerAuditRunner.Run(options.CheckerPath, options.CheckerArguments, inputs,
                     options.Settings, Path.Combine(Path.GetTempPath(), "OjGen-Cli-ReleaseChecker"), log, ct,
-                    options.CheckerTimeoutMs);
+                    options.CheckerTimeoutMs, contracts?.CheckerCases);
                 if (checker.Cancelled) { report.Cancelled = true; return; }
                 if (checker.Ok)
                 {
-                    report.Add(CliAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : options.Settings.TimeoutMs)} ms).\nKết quả từng test:\n{checker.TestDetails}");
+                    report.Add(CliAuditLevel.Pass, "Checker", $"Checker đạt {checker.Passed} ca (bao gồm cặp output chính thức và contract; timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : options.Settings.TimeoutMs)} ms).\nKết quả từng ca:\n{checker.TestDetails}");
                     if (checker.SelfTestWarning.Length > 0) report.Add(CliAuditLevel.Warning, "Tự thử checker", checker.SelfTestWarning);
                     else if (checker.MalformedProbeRejected) report.Add(CliAuditLevel.Pass, "Tự thử checker", "Đã từ chối output sai định dạng mẫu.");
                 }
@@ -307,6 +345,7 @@ internal static class CliReleaseAudit
                         (checker.Tests.Count > 0 ? "\nKết quả từng test:\n" + checker.TestDetails : ""));
             }
         }
+        else if (contracts?.CheckerCases.Count > 0) report.Add(CliAuditLevel.Error, "Checker contract", "Contract suite có ca checker nhưng chưa chọn --checker.");
 
         if (options.CandidateSolution.Trim().Length == 0)
         {
@@ -384,6 +423,7 @@ internal static class CliReleaseAudit
             .Append("Checker SHA-256: ").Append(OptionalHash(options.CheckerPath)).Append('\n')
             .Append("Checker argv template: ").Append(options.CheckerArguments).Append('\n')
             .Append("Checker timeout: ").Append(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs.ToString() : "use application timeout").Append(" ms\n")
+            .Append("Contract suite SHA-256: ").Append(OptionalHash(options.ContractSuitePath)).Append('\n')
             .Append("Independent solution SHA-256: ").Append(OptionalHash(options.CandidateSolution)).Append('\n')
             .Append("Tests: ").Append(FileManager.ListFilesWithExt(options.TestDirectory, ".inp").Count).Append(" input\n")
             .Append("Package checksum manifest: ").Append(PackageChecksumFile).Append(" (").Append(count).Append(" files, excludes itself)\n")
@@ -394,7 +434,7 @@ internal static class CliReleaseAudit
         {
             var files = FileManager.ListFilesWithExt(options.TestDirectory, ".inp");
             files.AddRange(FileManager.ListFilesWithExt(options.TestDirectory, ".out"));
-            foreach (string name in new[] { FileManager.InfoFile, FileManager.ChecksumFile, "AUDIT_REPORT.txt", "PACKAGE.txt", "problem.ojdraft.json" })
+            foreach (string name in new[] { FileManager.InfoFile, "ojgen_provenance.json", FileManager.ChecksumFile, "AUDIT_REPORT.txt", "PACKAGE.txt", "problem.ojdraft.json" })
             {
                 string path = Path.Combine(options.TestDirectory, name);
                 if (File.Exists(path)) files.Add(path);

@@ -2,7 +2,7 @@
 
 OJGEN 3.3.0 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
 
-OJGEN 3.3.0 bổ sung rút gọn phản ví dụ, checkpoint sinh input, nhãn độ phủ rõ ràng, nhập/so sánh gói test, hàng đợi GUI, plugin generator và JSON report cho CLI.
+OJGEN 3.3.0 bổ sung workspace `.ojproject`, tiếp tục cả pipeline tạo test, shrinker cấu trúc, ca hợp đồng validator/checker, provenance/inventory và preflight gói phát hành.
 
 Ứng dụng hỗ trợ tạo dữ liệu kiểm thử, chạy lời giải chuẩn để sinh output, quản lý bộ test và đóng gói ZIP. OJGEN cung cấp cả giao diện đồ họa (GUI) và dòng lệnh (CLI), phù hợp với nhu cầu sử dụng trực tiếp lẫn tự động hóa.
 
@@ -17,30 +17,39 @@ OJGEN 3.3.0 bổ sung rút gọn phản ví dụ, checkpoint sinh input, nhãn �
 - **Đóng gói ZIP:** Gom các file test để lưu trữ và chia sẻ.
 - **Tùy chỉnh cấu hình:** Số lượng test, seed, timeout, giới hạn output, bộ nhớ và các tham số riêng.
 - **Wizard thiết lập bài:** Đặt tên/mã bài, chọn khuôn input, chỉnh giới hạn, gắn lời giải chuẩn và lưu/mở hồ sơ `.ojproblem.json` để dùng lại.
-- **Kế hoạch nhóm test:** Chia bộ test thành tối đa 100 nhóm; mỗi nhóm có số lượng, seed riêng tùy chọn và cấu hình tham số riêng. Seed nhóm để trống được tạo ổn định từ seed chính.
-- **Lưu và tái sử dụng kế hoạch:** Lưu/mở danh sách nhóm dạng `.ojplan.json` theo khuôn bài; nhân bản nhóm và đổi thứ tự trước khi sinh lại.
+- **Kế hoạch nhóm test:** Chia bộ test thành tối đa 100 nhóm; mỗi nhóm có số lượng, seed riêng tùy chọn, cấu hình, nhãn phủ và thứ tự riêng. Có thể gán điểm tổng 100 và khai báo nhóm tiên quyết; OjGen kiểm tra nhóm thiếu, vòng phụ thuộc và tổng điểm.
+- **Lưu và tái sử dụng kế hoạch:** Lưu/mở danh sách nhóm dạng `.ojplan.json` theo khuôn bài; nhân bản nhóm, đổi thứ tự, gán điểm và khai báo nhóm tiên quyết.
 - **Rà soát trước khi tạo:** Xem lại đường dẫn, số lượng và input mẫu đã qua xác thực cho từng nhóm trước khi ghi file; OjGen tiếp tục xác thực mọi input và kiểm tra ZIP sau khi tạo.
 - **Test mẫu / test nhập tay:** Mở hoặc dán input, chọn cấu hình để xác thực, đánh dấu sample; lời giải chuẩn tạo `.out` cùng các test sinh tự động.
 - **Kiểm thử đối chiếu:** Chạy lời giải chuẩn và lời giải cần thử trên cùng các test nhỏ, so sánh output và lưu các input gây khác biệt để tái hiện.
 - **Rút gọn phản ví dụ:** Khi hai lời giải cho output khác nhau, OjGen thử giảm mảng, xâu, cạnh đồ thị và giá trị số; giữ cả input gốc lẫn bản thu nhỏ.
-- **Báo cáo độ phủ:** Đo kích thước như n/m/q/t từ input ở định dạng đã nhận diện, so với giới hạn cấu hình và gợi ý giá trị biên còn thiếu. Các kết luận vẫn được đánh dấu heuristic.
+- **Shrinker cấu trúc:** Thu nhỏ cây, ma trận, lưới, truy vấn và nhiều bộ test; chỉ chạy lại các ứng viên còn hợp lệ theo khuôn.
+- **Báo cáo độ phủ:** Đo kích thước như n/m/q/t từ input ở định dạng đã nhận diện, so với min/max của cấu hình từng nhóm, ước lượng khoảng số học đã chạm và nêu cận nhỏ/lớn còn thiếu. Nhóm được nhận diện bằng tên hoặc nhãn; đây là phép đo heuristic, không chứng minh đã phủ đủ logic của đề.
 - **Nhãn độ phủ:** Gắn nhãn như `small`, `boundary`, `stress` hoặc `adversarial` cho từng nhóm; đặt nhãn bắt buộc để audit cảnh báo nhóm còn thiếu.
-- **Soạn đề và xem trước:** Viết mô tả, định dạng input/output, ràng buộc và ví dụ; xem trước dạng HTML, lưu bản nháp Markdown/JSON và kiểm tra nhất quán với cấu hình bài, test mẫu.
+- **Soạn đề và xem trước:** Viết mô tả, định dạng input/output, ràng buộc và ví dụ; xem trước HTML với tiêu đề, danh sách, bảng, liên kết, ảnh HTTPS và một tập công thức TeX cơ bản; lưu bản nháp Markdown/JSON, giữ nguyên văn bản đa ngôn ngữ và kiểm tra nhất quán với cấu hình bài, test mẫu.
+- **Dự án soạn đề:** Lưu/mở `.ojproject` gồm cấu hình, kế hoạch nhóm, test tay/sample, statement, đường dẫn lời giải/test và lựa chọn audit; OjGen autosave và có thể khôi phục phiên làm việc.
+- **Ca hợp đồng validator/checker:** Khai báo input/output cần được chấp nhận hoặc từ chối trong `.ojcontract.json`; GUI tạo file mẫu, audit chạy các ca trên validator/checker đã chọn.
 - **Đóng gói bài:** Xuất statement Markdown/HTML, hồ sơ `.ojproblem.json`, test, ví dụ và tùy chọn lời giải chuẩn, validator, checker thành thư mục hoặc ZIP.
 - **Xuất Kattis Problem Package:** Tạo gói theo định dạng 2025-09 release candidate, kèm test sample/secret, metadata, lời giải và validator. Định dạng này chưa được hỗ trợ rộng; hãy kiểm tra judge đích trước khi nhập.
 - **Kiểm định trước phát hành:** Trước khi đóng gói, OjGen rà cấu trúc đề, định dạng input, đủ output, test trùng, độ phủ nhỏ/biên/stress, SHA-256 và khả năng tái lập input với cùng seed; lỗi chặn đóng gói, cảnh báo cần được xác nhận. Nếu chọn validator, OjGen chạy trên mọi input hợp lệ và một số input sai; có thể thêm lời giải độc lập để đối chiếu trên 100 test nhỏ. Checker chạy trên từng input/output chính thức theo mẫu đối số có thể cấu hình và timeout.
-- **Đồ thị có ràng buộc:** Sinh đồ thị liên thông, liên thông mạnh, đơn, có trọng số, DAG và hai phía; validator từ chối cấu hình bất khả thi, chu trình DAG hoặc cạnh cùng phía.
+- **Kiểm tra package thực tế:** Kiểm tra metadata, cặp test, thư mục định dạng và checksum trong thư mục gói OjGen/Kattis trước khi tạo ZIP; package kèm inventory CSV và provenance JSON có SHA-256 từng test.
+- **Đồ thị có ràng buộc:** Sinh đồ thị liên thông, liên thông mạnh, đơn, có trọng số, DAG và hai phía; chọn mật độ thưa/vừa/dày hoặc tự đặt minM/maxM. Validator từ chối cấu hình bất khả thi, chu trình DAG hoặc cạnh cùng phía.
 - **Đóng gói phát hành:** `scripts/package-release.ps1` kiểm tra phiên bản nguồn, chạy bộ hồi quy, publish GUI/CLI self-contained, smoke test, tạo cấu trúc ZIP cố định và checksum. GitHub Actions chỉ tạo draft release sau khi các bước đạt.
 - **Theo dõi tính toàn vẹn:** Mỗi bộ test có `SHA256SUMS.txt`; gói phát hành có `PACKAGE_SHA256SUMS.txt` cùng `AUDIT_REPORT.txt`. `PACKAGE.txt` ghi seed, phiên bản/runtime/OS và SHA-256 của các lời giải, validator, checker đã chọn.
-- **Khung validator/checker:** Tạo file khởi đầu C++ hoặc Python cho validator input và checker output kèm README các phần cần hoàn thiện.
+- **Khung validator/checker:** Tạo validator điền sẵn định dạng/cấu hình khuôn; chạy contract hợp lệ và các biến thể sai mà khuôn nhận diện được. Checker có mẫu Testlib, sai số số thực, token không thứ tự và nhiều đáp án hợp lệ.
 - **Tạo lại output:** Chạy lại lời giải trên bộ test có sẵn.
 - **Nhật ký và tiến độ:** Theo dõi quá trình chạy, xem thông báo và hủy tác vụ trong GUI.
-- **Hỗ trợ nhiều ngôn ngữ:** Chạy lời giải C++, Python, Java source launcher, C# đơn file và chương trình đã biên dịch.
-- **Tiếp tục sinh test:** CLI `--resume` kiểm tra checkpoint cấu hình và SHA-256 trước khi bỏ qua input đã sinh; cần dùng lại cùng seed.
+- **Kiểm kê và trực quan hóa test:** Lọc theo tên/nhóm/nhãn, xem kích thước, min/max số, test trùng và output thiếu; đổi tên hoặc nhóm hàng loạt, xuất CSV, vẽ đồ thị/cây, lưới và phân phối số.
+- **So sánh ma trận lời giải:** Chạy nhiều lời giải trên cùng test, chọn lời giải chuẩn, gắn nhãn lời giải đúng/sai và xem test phân biệt. So sánh token sau chuẩn hóa khoảng trắng; bài nhiều đáp án cần checker riêng.
+- **Kiểm tra lại test cũ:** Xác thực input theo khuôn và chạy checker trên output hiện có mà không sinh lại input hoặc output.
+- **Benchmark theo nhóm:** Báo median, p95 và working set đỉnh tổng thể/theo nhóm; `ojgen_info.txt` ghi hệ điều hành, runtime, kiến trúc và số CPU logic để đọc kết quả đúng bối cảnh.
+- **Runner nhiều file:** Tạo `.ojrun.json` để đặt lệnh build/run và working directory không qua shell; ví dụ C++ nhiều file ở [examples/multi-file.ojrun.json](examples/multi-file.ojrun.json). Placeholder gồm `{sourceDir}`, `{workDir}`, `{exe}`.
+- **Hỗ trợ nhiều ngôn ngữ:** Chạy C/C++, Python, Java source launcher, Kotlin, Pascal, C# đơn file, Rust, Go, run profile và chương trình đã biên dịch; compiler/runtime cần được cài trên máy.
+- **Tiếp tục toàn bộ pipeline:** GUI và CLI `--resume` kiểm tra checkpoint/fingerprint rồi bỏ qua input và output đã có hash đúng; đổi seed, cấu hình hoặc lời giải sẽ khiến output được chạy lại.
 - **Nhập và so sánh bộ test:** Nạp `.in`/`.inp` và `.ans`/`.out` từ thư mục hoặc ZIP, sau đó so sánh tên và nội dung hai bộ.
 - **Plugin generator:** Nạp DLL có lớp triển khai `IOjGenProblemPlugin` và trả về các lớp con `Problem`; CLI dùng `--plugin PATH`, GUI tự dò thư mục `plugins`.
 - **Viết plugin:** Hướng dẫn tạo DLL, triển khai interface và đặt plugin có trong [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
-- **Hàng đợi GUI:** Lưu nhiều cấu hình độc lập rồi rà và chạy tuần tự.
+- **Hàng đợi GUI:** Tự lưu và khôi phục qua lần mở app; đổi thứ tự, seed, thư mục output, kế hoạch nhóm, xóa mục và giữ mục lỗi để sửa/chạy lại.
 - **JSON và shell completion:** `--json-report FILE` ghi báo cáo máy đọc được; `--completion bash|powershell` tạo gợi ý lệnh.
 
 ## 2. Các phiên bản
@@ -185,7 +194,7 @@ Kiểm định thư mục đã có. Có thể nạp tham số từ hồ sơ `.oj
 ojgen --audit-dir output/array --profile problem.ojproblem.json --tests 30 --seed 2024 --solution sol.cpp
 ```
 
-Thêm các bước tùy chọn: `--validator validator.py` chạy validator trên mọi input và một số biến thể sai; `--compare-solution brute.cpp` so với `--solution` trên 100 test nhỏ; `--checker checker.cpp` chạy checker trên từng test và ghi trạng thái/thời gian từng test vào audit. Mẫu mặc định là `--checker-args "{input} {output} {answer}"`; placeholder `{input}`, `{output}`, `{answer}`, `{test}` được truyền như argv, không qua shell. `--checker-timeout MS` đặt giới hạn mỗi lần chạy; mặc định dùng `--timeout`. Checker được thử với output chính thức cho cả `{output}` và `{answer}`. `--statement draft.ojdraft.json` kiểm tra nội dung bản nháp được lưu từ giao diện. Cảnh báo chặn ZIP theo mặc định; sau khi đọc `AUDIT_REPORT.txt`, dùng `--allow-audit-warnings` để xác nhận. Lỗi kiểm định vẫn luôn chặn ZIP.
+Thêm các bước tùy chọn: `--validator validator.py` chạy validator trên mọi input và một số biến thể sai; `--compare-solution brute.cpp` so với `--solution` trên 100 test nhỏ; `--checker checker.cpp` chạy checker trên từng test và ghi trạng thái/thời gian từng test vào audit. `--contract-suite validation.ojcontract.json` chạy các ca chấp nhận/từ chối đã khai báo cho validator/checker. Mẫu mặc định là `--checker-args "{input} {output} {answer}"`; placeholder `{input}`, `{output}`, `{answer}`, `{test}` được truyền như argv, không qua shell. `--checker-timeout MS` đặt giới hạn mỗi lần chạy; mặc định dùng `--timeout`. Checker được thử với output chính thức cho cả `{output}` và `{answer}`. `--statement draft.ojdraft.json` kiểm tra nội dung bản nháp được lưu từ giao diện. Cảnh báo chặn ZIP theo mặc định; sau khi đọc `AUDIT_REPORT.txt`, dùng `--allow-audit-warnings` để xác nhận. Lỗi kiểm định vẫn luôn chặn ZIP.
 
 Gói kiểm định gồm `AUDIT_REPORT.txt`, `PACKAGE.txt`, `PACKAGE_SHA256SUMS.txt` và `SHA256SUMS.txt`. Khi chạy `--zip-dir`, OjGen kiểm tra các manifest có sẵn và không đóng gói nếu nội dung đã đổi.
 
@@ -217,13 +226,15 @@ Tiếp tục sau khi sinh bị dừng bằng cách dùng lại cùng seed, tham 
 ojgen --problem array --tests 100 --seed 2024 --out output/array --resume
 ```
 
-`--resume` cần seed cố định và checkpoint do OjGen tạo trong lần chạy trước.
+`--resume` cần seed cố định. Bật ngay từ lần chạy đầu để OjGen lưu checkpoint từng input/output; khi chạy lại, OjGen xác minh cấu hình, lời giải, giới hạn chạy và SHA-256 rồi chỉ chạy lại output còn thiếu hoặc không khớp.
 
 Tạo bộ DAG hoặc đồ thị hai phía:
 
 ```bash
 ojgen --problem graph --directed 1 --dag 1 --connected 1 --tests 50 --seed 2026
 ojgen --problem graph --bipartite 1 --simple 1 --connected 1 --tests 50 --seed 2026
+ojgen --problem graph --density 1 --connected 1 --tests 50 --seed 2026  # đồ thị thưa
+ojgen --problem graph --density 3 --connected 1 --tests 50 --seed 2026  # đồ thị dày
 ```
 
 ## 5. Yêu cầu sử dụng

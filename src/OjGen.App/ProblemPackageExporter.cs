@@ -21,9 +21,11 @@ internal sealed class ProblemPackageOptions
     public string CheckerPath { get; set; } = "";
     public string CheckerArguments { get; set; } = "{input} {output} {answer}";
     public int CheckerTimeoutMs { get; set; }
+    public string ContractSuitePath { get; set; } = "";
     public string CandidateSolution { get; set; } = "";
     public string AuditReport { get; set; } = "";
     public ulong? TestSeed { get; set; }
+    public JobSpec? GeneratedSpec { get; set; }
 }
 
 internal sealed class ProblemPackageResult
@@ -87,6 +89,38 @@ internal static class ProblemPackageExporter
         }
         File.WriteAllText(manifestPath, lines.ToString(), new UTF8Encoding(false));
         return files.Count;
+    }
+
+    private static string Csv(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+
+    private static void WriteTestInventory(string root, IReadOnlyList<string> inputs, JobSpec? spec,
+        IReadOnlyList<ManualTestSpec> manualTests)
+    {
+        var csv = new StringBuilder("name,role,group,tags,input_bytes,input_sha256,output_bytes,output_sha256\n");
+        for (int i = 0; i < inputs.Count; i++)
+        {
+            string input = inputs[i];
+            string output = Path.ChangeExtension(input, ".out");
+            bool sample = i < manualTests.Count && manualTests[i].IsSample;
+            string group = i < manualTests.Count ? manualTests[i].ConfigName : "";
+            IReadOnlyList<string> tags = sample ? new[] { "sample" } : Array.Empty<string>();
+            if (i >= manualTests.Count && spec?.Groups.Count > 0)
+            {
+                int generatedIndex = i - manualTests.Count;
+                foreach (var item in spec.Groups)
+                {
+                    if (generatedIndex < item.TestCount) { group = item.Name; tags = item.CoverageTags; break; }
+                    generatedIndex -= item.TestCount;
+                }
+            }
+            long outputBytes = File.Exists(output) ? new FileInfo(output).Length : 0;
+            string outputHash = File.Exists(output) ? HashOptionalFile(output) : "";
+            csv.Append(Csv(Path.GetFileNameWithoutExtension(input))).Append(',')
+                .Append(Csv(sample ? "sample" : "secret")).Append(',').Append(Csv(group)).Append(',')
+                .Append(Csv(string.Join(';', tags))).Append(',').Append(new FileInfo(input).Length).Append(',')
+                .Append(HashOptionalFile(input)).Append(',').Append(outputBytes).Append(',').Append(outputHash).Append('\n');
+        }
+        File.WriteAllText(Path.Combine(root, "TEST_INVENTORY.csv"), csv.ToString(), new UTF8Encoding(false));
     }
 
     private static string HashOptionalFile(string path)
@@ -170,6 +204,9 @@ internal static class ProblemPackageExporter
 
         try
         {
+            if (options.ExportFormat != "Icpc" && options.GeneratedSpec is { Groups.Count: > 0 } generated)
+                TestPlanProfile.From(generated.Problem, generated.Groups, generated.RequiredCoverageTags)
+                    .Save(Path.Combine(packageDirectory, "TEST_PLAN.ojplan.json"));
             if (options.ExportFormat == "Icpc")
                 return ExportIcpcPackage(options, document, problem, packageDirectory, testInputs, manualTests);
 
@@ -198,6 +235,10 @@ internal static class ProblemPackageExporter
             if (File.Exists(sourceChecksums))
                 File.Copy(sourceChecksums, Path.Combine(testDirectory, FileManager.ChecksumFile), overwrite: false);
         }
+
+        WriteTestInventory(packageDirectory, testInputs, options.GeneratedSpec, manualTests);
+        string provenanceSource = options.IncludeTests ? Path.Combine(options.TestDirectory, "ojgen_provenance.json") : "";
+        if (provenanceSource.Length > 0 && File.Exists(provenanceSource)) File.Copy(provenanceSource, Path.Combine(packageDirectory, "ojgen_provenance.json"), overwrite: false);
 
         var samplesToWrite = manualTests.Select((test, index) => (test, index)).Where(item => item.test.IsSample).ToList();
         if (samplesToWrite.Count > 0)
@@ -238,6 +279,7 @@ internal static class ProblemPackageExporter
             .Append("Checker file SHA-256: ").Append(HashOptionalFile(options.CheckerPath)).Append('\n')
             .Append("Checker argv template: ").Append(options.CheckerArguments).Append('\n')
             .Append("Checker timeout: ").Append(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs.ToString() : "use application timeout").Append(" ms\n")
+            .Append("Contract suite SHA-256: ").Append(HashOptionalFile(options.ContractSuitePath)).Append('\n')
             .Append("Independent solution file SHA-256: ").Append(HashOptionalFile(options.CandidateSolution)).Append('\n')
             .Append("Tests: ").Append(inputs).Append(" input, ").Append(outputs).Append(" output\n")
             .Append("Samples: ").Append(samples).Append(" (sample output files are included when available)\n")
@@ -249,6 +291,10 @@ internal static class ProblemPackageExporter
         File.AppendAllText(Path.Combine(packageDirectory, "PACKAGE.txt"), $"Package checksums: {PackageChecksumFile} ({hashedFiles} files)\n", new UTF8Encoding(false));
         // Refresh the manifest after adding its description to PACKAGE.txt.
         hashedFiles = WritePackageChecksums(packageDirectory);
+
+        var packageValidation = ProblemPackageValidator.Validate(packageDirectory, "OjGen");
+        if (packageValidation.Errors.Count > 0)
+            throw new InvalidDataException("Gói OjGen không qua kiểm tra cấu trúc:\n- " + string.Join("\n- ", packageValidation.Errors));
 
         string zipPath = "";
         if (options.CreateZip)
@@ -374,6 +420,19 @@ internal static class ProblemPackageExporter
         File.WriteAllText(Path.Combine(packageDirectory, "README-IMPORT.txt"),
             "This package uses the Kattis Problem Package Format 2025-09 release candidate. It is not widely supported; check the target judge before importing.\n" +
             "The validator launcher and accepted solution are source files. Review package metadata, statement, samples, and permissions before use.\n", new UTF8Encoding(false));
+
+        WriteTestInventory(packageDirectory, testInputs, options.GeneratedSpec, manualTests);
+        string provenanceSource = Path.Combine(options.TestDirectory, "ojgen_provenance.json");
+        if (File.Exists(provenanceSource)) File.Copy(provenanceSource, Path.Combine(packageDirectory, "ojgen_provenance.json"), overwrite: false);
+        if (options.AuditReport.Length > 0)
+            File.WriteAllText(Path.Combine(packageDirectory, "AUDIT_REPORT.txt"), options.AuditReport, new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(packageDirectory, "PACKAGE.txt"),
+            $"Format: Kattis Problem Package 2025-09 (release candidate)\nProblem: {document.Name} [{document.Code}]\nOjGen version: {Util.Version}\nTests: {testInputs.Count}\nSamples: {manualTests.Count(test => test.IsSample)}\n",
+            new UTF8Encoding(false));
+        WritePackageChecksums(packageDirectory);
+        var packageValidation = ProblemPackageValidator.Validate(packageDirectory, "Icpc");
+        if (packageValidation.Errors.Count > 0)
+            throw new InvalidDataException("Gói ICPC/Kattis không qua kiểm tra cấu trúc:\n- " + string.Join("\n- ", packageValidation.Errors));
 
         string zipPath = "";
         if (options.CreateZip)

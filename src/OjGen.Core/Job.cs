@@ -2,6 +2,8 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Runtime.InteropServices;
 
 namespace OjGen.Core;
 
@@ -50,6 +52,86 @@ public sealed class JobResult
 public static class Job
 {
     private static string NowStr() => DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    private static string Sha256File(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private static void WriteProvenance(string outDir, JobSpec job, Settings settings, ulong seed,
+        IReadOnlyList<string> inputs, SetStatus status)
+    {
+        var groups = job.Groups.Count > 0 ? job.Groups : new List<TestGroupSpec>
+        {
+            new() { Name = "Tất cả", TestCount = Math.Max(0, job.TestCount - job.ManualTests.Count), Cfg = job.Cfg },
+        };
+        var testRecords = new List<object>(inputs.Count);
+        for (int index = 0; index < inputs.Count; index++)
+        {
+            string input = inputs[index];
+            string output = Path.ChangeExtension(input, ".out");
+            string groupName = "";
+            IReadOnlyList<string> tags = Array.Empty<string>();
+            string? manualName = null;
+            if (index < job.ManualTests.Count)
+            {
+                var manual = job.ManualTests[index];
+                groupName = manual.ConfigName;
+                manualName = manual.Name;
+                tags = manual.IsSample ? new[] { "sample" } : Array.Empty<string>();
+            }
+            else
+            {
+                int generatedIndex = index - job.ManualTests.Count;
+                foreach (var group in groups)
+                {
+                    if (generatedIndex < group.TestCount) { groupName = group.Name; tags = group.CoverageTags; break; }
+                    generatedIndex -= group.TestCount;
+                }
+            }
+            var inputInfo = new FileInfo(input);
+            var outputInfo = File.Exists(output) ? new FileInfo(output) : null;
+            testRecords.Add(new
+            {
+                name = Path.GetFileNameWithoutExtension(input), group = groupName, tags, manualName,
+                input = new { path = Path.GetFileName(input), bytes = inputInfo.Length, sha256 = Sha256File(input) },
+                output = outputInfo == null ? null : new { path = Path.GetFileName(output), bytes = outputInfo.Length, sha256 = Sha256File(output) },
+            });
+        }
+        var payload = new
+        {
+            schemaVersion = 1,
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            ojgenVersion = Util.Version,
+            runtime = RuntimeInformation.FrameworkDescription,
+            os = RuntimeInformation.OSDescription,
+            architecture = RuntimeInformation.ProcessArchitecture.ToString(),
+            problem = new { id = job.Problem.Id, title = job.Problem.Title, type = job.Problem.GetType().FullName,
+                assemblyVersion = job.Problem.GetType().Assembly.GetName().Version?.ToString() },
+            problemName = job.ProblemName,
+            problemCode = job.ProblemCode,
+            seed = Util.LL(seed),
+            testCount = job.TestCount,
+            generatedTestCount = Math.Max(0, job.TestCount - job.ManualTests.Count),
+            status = status.ToString(),
+            generatorConfiguration = new { ints = job.Cfg.Ints, texts = job.Cfg.Texts },
+            groups = groups.Select(group => new { group.Name, group.TestCount, group.Seed, group.CoverageTags, group.Points, group.DependsOn,
+                ints = group.Cfg.Ints, texts = group.Cfg.Texts }).ToList(),
+            requiredCoverageTags = job.RequiredCoverageTags,
+            manualTests = job.ManualTests.Select(test => new { test.Name, test.IsSample, test.ConfigName, ints = test.Cfg.Ints, texts = test.Cfg.Texts }).ToList(),
+            solution = job.SolutionPath.Length == 0 ? null : new
+            {
+                file = Path.GetFileName(job.SolutionPath),
+                sha256 = File.Exists(job.SolutionPath) ? Sha256File(job.SolutionPath) : null,
+            },
+            runner = new { settings.Compiler, settings.EffectiveFlags, settings.PythonCommand, settings.TimeoutMs,
+                settings.CompileTimeoutSec, settings.MaxOutputMB, settings.MemoryMB, settings.NormalizeEol, settings.Prefix },
+            tests = testRecords,
+        };
+        File.WriteAllText(Path.Combine(outDir, "ojgen_provenance.json"),
+            JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+    }
 
     private static string NormalizeOutputTokens(string text)
     {
@@ -199,7 +281,7 @@ public static class Job
         }
         string checksumManifest = Path.Combine(dir, FileManager.ChecksumFile);
         if (File.Exists(checksumManifest)) entries.Add(new ZipEntrySpec(FileManager.ChecksumFile, checksumManifest));
-        foreach (string sidecar in new[] { FileManager.InfoFile, "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt", "problem.ojdraft.json" })
+        foreach (string sidecar in new[] { FileManager.InfoFile, "ojgen_provenance.json", "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt", "problem.ojdraft.json" })
         {
             string sidecarPath = Path.Combine(dir, sidecar);
             if (File.Exists(sidecarPath)) entries.Add(new ZipEntrySpec(sidecar, sidecarPath));
@@ -376,7 +458,14 @@ public static class Job
             else
             {
                 log.Line($"Chạy lời giải trên {g.Inputs.Count} test (timeout {st.TimeoutMs} ms/test):");
-                try { rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct); }
+                try
+                {
+                    string outputFingerprint = job.ResumeGeneration
+                        ? SolutionRunner.CreateResumeFingerprint(job.SolutionPath, st)
+                        : "";
+                    rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct,
+                        resume: job.ResumeGeneration, resumeFingerprint: outputFingerprint, solutionWorkingDirectory: ps.WorkingDirectory);
+                }
                 finally { SolutionRunner.Cleanup(ps); }
                 for (int i = 0; i < Math.Min(job.ManualTests.Count, g.Inputs.Count); i++)
                 {
@@ -402,6 +491,9 @@ public static class Job
         result.Status = status;
         result.Cancelled = cancelled;
 
+        try { WriteProvenance(job.OutDir, job, st, seed, g.Inputs, status); }
+        catch (Exception ex) { log.Line("  ! Không ghi được ojgen_provenance.json: " + ex.Message); }
+
         var info = new StringBuilder();
         info.Append("ojgen ").Append(Util.Version).Append(" - thông tin bộ test\n");
         info.Append("Thời gian tạo : ").Append(NowStr()).Append('\n');
@@ -412,6 +504,7 @@ public static class Job
         if (job.RequiredCoverageTags.Count > 0)
             info.Append("Nhãn độ phủ bắt buộc: ").Append(string.Join(", ", job.RequiredCoverageTags)).Append('\n');
         info.Append("Lời giải chuẩn: ").Append(solutionShown).Append('\n');
+        if (rep.Benchmark.Count > 0) info.Append("Môi trường đo benchmark: ").Append(BenchmarkEnvironment()).Append('\n');
         if (job.ManualTests.Count > 0)
         {
             info.Append("Test nhập tay:\n");
@@ -432,7 +525,10 @@ public static class Job
                 var group = groups[i];
                 info.Append("Nhóm ").Append(i + 1).Append(": ").Append(group.Name)
                     .Append(" ( ").Append(group.TestCount).Append(" test, seed ")
-                    .Append(Util.LL(Generator.GroupSeed(seed, i, group.Seed))).Append(" )\n")
+                    .Append(Util.LL(Generator.GroupSeed(seed, i, group.Seed))).Append(" )")
+                    .Append(group.Points > 0 ? $" · {group.Points} điểm" : "")
+                    .Append(group.DependsOn.Count > 0 ? " · phụ thuộc: " + string.Join(", ", group.DependsOn) : "")
+                    .Append('\n')
                     .Append(group.CoverageTags.Count > 0 ? "Nhãn độ phủ: " + string.Join(", ", group.CoverageTags) + "\n" : "")
                     .Append(p.DescribeConfig(group.Cfg));
             }
@@ -443,6 +539,22 @@ public static class Job
         if (cancelled) info.Append("  (Người dùng đã hủy giữa chừng.)\n");
         if (compileErr.Length > 0) info.Append("  Lỗi biên dịch/chuẩn bị lời giải:\n").Append(compileErr).Append('\n');
         if (rep.Failures.Count > 0) info.Append("  Test lỗi:\n").Append(FailureSummary(rep));
+        if (rep.Metrics.Count > 0 && groups.Count > 1)
+        {
+            info.Append("Benchmark theo nhóm:\n");
+            int firstMetricIndex = job.ManualTests.Count + 1;
+            foreach (var group in groups)
+            {
+                int lastMetricIndex = firstMetricIndex + group.TestCount - 1;
+                var groupBenchmark = BenchmarkSummary.From(rep.Metrics.Where(metric => metric.Index >= firstMetricIndex && metric.Index <= lastMetricIndex));
+                if (groupBenchmark.Count > 0)
+                    info.Append("  ").Append(group.Name).Append(": ").Append(groupBenchmark.Count).Append(" lần · median ")
+                        .Append(groupBenchmark.MedianMs.ToString("F1", CultureInfo.InvariantCulture)).Append(" ms · p95 ")
+                        .Append(groupBenchmark.P95Ms.ToString("F1", CultureInfo.InvariantCulture)).Append(" ms · peak ")
+                        .Append(Util.FmtBytes((ulong)Math.Max(0, groupBenchmark.PeakMemoryBytes))).Append('\n');
+                firstMetricIndex = lastMetricIndex + 1;
+            }
+        }
         foreach (var w in g.Warnings) info.Append("Cảnh báo: ").Append(w).Append('\n');
         foreach (var w in rep.Warnings) info.Append("Cảnh báo: ").Append(w).Append('\n');
         FileManager.WriteFile(Path.Combine(job.OutDir, FileManager.InfoFile), info.ToString());
@@ -458,6 +570,23 @@ public static class Job
             log.Line($"  {rep.Ok}/{rep.Total} test có output.");
         if (rep.PeakMemoryBytes > 0)
             log.Line($"  Bộ nhớ đỉnh đo được: khoảng {Util.FmtBytes(rep.PeakMemoryBytes)} (đo theo working set của tiến trình).");
+        if (rep.Benchmark.Count > 0)
+        {
+            log.Line("  Môi trường benchmark: " + BenchmarkEnvironment() + ".");
+            log.Line($"  Benchmark ({rep.Benchmark.Count} lần chạy): median {rep.Benchmark.MedianMs:F1} ms · p95 {rep.Benchmark.P95Ms:F1} ms · bộ nhớ đỉnh {Util.FmtBytes((ulong)Math.Max(0, rep.Benchmark.PeakMemoryBytes))}.");
+        }
+        if (rep.Metrics.Count > 0 && groups.Count > 1)
+        {
+            int firstMetricIndex = job.ManualTests.Count + 1;
+            foreach (var group in groups)
+            {
+                int lastMetricIndex = firstMetricIndex + group.TestCount - 1;
+                var groupBenchmark = BenchmarkSummary.From(rep.Metrics.Where(metric => metric.Index >= firstMetricIndex && metric.Index <= lastMetricIndex));
+                if (groupBenchmark.Count > 0)
+                    log.Line($"    Nhóm {group.Name}: {groupBenchmark.Count} lần · median {groupBenchmark.MedianMs:F1} ms · p95 {groupBenchmark.P95Ms:F1} ms · peak {Util.FmtBytes((ulong)Math.Max(0, groupBenchmark.PeakMemoryBytes))}.");
+                firstMetricIndex = lastMetricIndex + 1;
+            }
+        }
         foreach (var metric in rep.Metrics.OrderByDescending(item => item.ElapsedMs).Take(5))
             log.Line($"  Chậm: {metric.Name} · {metric.ElapsedMs} ms" + (metric.PeakMemoryBytes > 0 ? $" · {Util.FmtBytes(metric.PeakMemoryBytes)}" : ""));
         log.Line($"  Thư mục: {job.OutDir}  (thông tin chi tiết: {FileManager.InfoFile})");
@@ -473,7 +602,11 @@ public static class Job
                 return result;
             }
         }
-        if (!cancelled) Generator.CompleteResumeCheckpoint(job.OutDir);
+        if (!cancelled && status != SetStatus.Incomplete)
+        {
+            Generator.CompleteResumeCheckpoint(job.OutDir);
+            SolutionRunner.CompleteOutputCheckpoint(job.OutDir);
+        }
         result.ExitCode = status == SetStatus.Incomplete ? 1 : 0;
         return result;
     }
@@ -506,7 +639,7 @@ public static class Job
         else
         {
             RememberSolution(st, solution, "");
-            try { rep = SolutionRunner.ProduceOutputs(ps.Argv, inputs, st, st.WorkDir, log, ct); }
+            try { rep = SolutionRunner.ProduceOutputs(ps.Argv, inputs, st, st.WorkDir, log, ct, solutionWorkingDirectory: ps.WorkingDirectory); }
             finally { SolutionRunner.Cleanup(ps); }
             foreach (var w in rep.Warnings) log.Line("  ! " + w);
             if (rep.Failures.Count > 0) PrintFailures(rep, log);
@@ -519,6 +652,13 @@ public static class Job
         info.Append("Trạng thái    : ").Append(StatusLine(status)).Append('\n');
         if (note.Length > 0) info.Append(note).Append('\n');
         if (rep.Failures.Count > 0) info.Append("  Test lỗi:\n").Append(FailureSummary(rep));
+        if (rep.Benchmark.Count > 0)
+        {
+            info.Append("Môi trường đo benchmark: ").Append(BenchmarkEnvironment()).Append('\n');
+            info.Append("Benchmark đã đo: ").Append(rep.Benchmark.Count).Append(" lần chạy · median ").Append(rep.Benchmark.MedianMs.ToString("F1", CultureInfo.InvariantCulture))
+                .Append(" ms · p95 ").Append(rep.Benchmark.P95Ms.ToString("F1", CultureInfo.InvariantCulture)).Append(" ms · bộ nhớ đỉnh ")
+                .Append(Util.FmtBytes((ulong)Math.Max(0, rep.Benchmark.PeakMemoryBytes))).Append("\n");
+        }
         if (rep.Metrics.Count > 0)
         {
             info.Append("Đo hiệu năng (working set; xấp xỉ):\n  Bộ nhớ đỉnh: ").Append(Util.FmtBytes(rep.PeakMemoryBytes))
@@ -540,4 +680,7 @@ public static class Job
         result.ExitCode = status == SetStatus.Incomplete ? 1 : 0;
         return result;
     }
+
+    private static string BenchmarkEnvironment() =>
+        $"{RuntimeInformation.OSDescription}; {RuntimeInformation.FrameworkDescription}; {RuntimeInformation.ProcessArchitecture}; {Environment.ProcessorCount} logical CPU";
 }

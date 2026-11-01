@@ -50,13 +50,13 @@ expect_exit 0 "--problem custom --tests 100 --seed 2024" "${BIN[@]}" --problem c
 
 echo "== Tái tạo bằng seed"
 "${BIN[@]}" --problem custom --tests 100 --seed 2024 --out "$T/custom_again" "${COMMON[@]}" > /dev/null
-diff -r -x ojgen_info.txt -x '*.zip' "$T/custom" "$T/custom_again" > /dev/null && ok "cùng seed -> cùng bộ test" || bad "cùng seed nhưng khác dữ liệu"
+diff -r -x ojgen_info.txt -x ojgen_provenance.json -x '*.zip' "$T/custom" "$T/custom_again" > /dev/null && ok "cùng seed -> cùng bộ test" || bad "cùng seed nhưng khác dữ liệu"
 
 echo "== Lưu và tái sử dụng kế hoạch nhóm"
 expect_exit 0 "--plan sinh đúng số test của các nhóm" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --seed 2024 --out "$T/plan" --no-zip
 [[ $(count "$T/plan" .inp) -eq 5 ]] && grep -q "Nhỏ" "$T/plan/ojgen_info.txt" && grep -q "Stress" "$T/plan/ojgen_info.txt" && grep -q "Nhãn độ phủ bắt buộc: small, stress" "$T/plan/ojgen_info.txt" && ok "plan: nhóm, thứ tự, nhãn và tổng test được áp dụng" || bad "plan: thiếu nhóm, nhãn hoặc sai số test"
 expect_exit 0 "--plan tái lập cùng seed" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --seed 2024 --out "$T/plan_again" --no-zip
-diff -r -x ojgen_info.txt "$T/plan" "$T/plan_again" > /dev/null && ok "plan: nạp lại cho bộ input tái lập" || bad "plan: dữ liệu khác khi tái sử dụng"
+diff -r -x ojgen_info.txt -x ojgen_provenance.json "$T/plan" "$T/plan_again" > /dev/null && ok "plan: nạp lại cho bộ input tái lập" || bad "plan: dữ liệu khác khi tái sử dụng"
 expect_exit 2 "--plan từ chối --tests ngoài kế hoạch" "${BIN[@]}" --plan tests/fixtures/array-plan.ojplan.json --tests 5
 expect_exit 2 "--plan từ chối khuôn không khớp" "${BIN[@]}" --problem graph --plan tests/fixtures/array-plan.ojplan.json
 expect_exit 0 "--profile mở lại cấu hình bài đã lưu" "${BIN[@]}" --profile tests/fixtures/single-n.ojproblem.json --tests 3 --seed 14 --no-zip --out "$T/profile"
@@ -69,6 +69,19 @@ expect_exit 2 "--resume từ chối thư mục hoàn tất không có checkpoint
 mkdir -p "$T/resume_stale_output"
 printf 'output cũ\n' > "$T/resume_stale_output/test01.out"
 expect_exit 2 "--resume từ chối output cũ nếu không có lời giải để tạo lại" "${BIN[@]}" --problem single_n --tests 3 --seed 78 --resume --no-zip --out "$T/resume_stale_output"
+if command -v python3 > /dev/null; then
+    export OJGEN_TEST_RESUME_COUNTER="$T/resume_counter"
+    printf '0\n' > "$OJGEN_TEST_RESUME_COUNTER"
+    expect_exit 1 "--resume fixture dừng sau khi đã có output checkpoint" "${BIN[@]}" --problem single_n --tests 3 --seed 79 --solution "$SOL/resume_counter.py" --resume --no-zip --out "$T/resume_output"
+    [[ $(count "$T/resume_output" .out) -eq 1 && -f "$T/resume_output/.ojgen_output_checkpoint.json" ]] && ok "resume output: giữ output hoàn tất và checkpoint khi test kế tiếp lỗi" || bad "resume output: thiếu output/checkpoint sau lỗi"
+    cp "$T/resume_output/test01.out" "$T/resume_first_output"
+    expect_exit 0 "--resume tiếp tục output còn thiếu" "${BIN[@]}" --problem single_n --tests 3 --seed 79 --solution "$SOL/resume_counter.py" --resume --no-zip --out "$T/resume_output"
+    [[ $(count "$T/resume_output" .out) -eq 3 && ! -f "$T/resume_output/.ojgen_output_checkpoint.json" ]] && ok "resume output: hoàn tất các output còn thiếu" || bad "resume output: không hoàn tất"
+    cmp -s "$T/resume_first_output" "$T/resume_output/test01.out" && grep -q '^1:' "$T/resume_output/test01.out" && ok "resume output: tái sử dụng output đã khớp hash" || bad "resume output: đã chạy lại output checkpoint"
+    unset OJGEN_TEST_RESUME_COUNTER
+else
+    echo "  (bỏ qua: không có python3 để kiểm tra tiếp tục output)"
+fi
 mkdir -p "$T/oj_source/data/sample" "$T/oj_source/data/secret"
 printf '3\n1 2 3\n' > "$T/oj_source/data/sample/01.in"
 printf '6\n' > "$T/oj_source/data/sample/01.ans"
@@ -152,6 +165,11 @@ expect_exit 0 "sinh đồ thị hai phía liên thông" "${BIN[@]}" --problem gr
 [[ $(count "$T/graph_bipartite" .inp) -eq 12 ]] && ok "hai phía: sinh đủ input đã xác thực" || bad "hai phía: số input sai"
 expect_exit 0 "sinh đồ thị có hướng liên thông mạnh" "${BIN[@]}" --problem graph --tests 4 --seed 13 --directed 1 --stronglyConnected 1 --simple 1 --minN 5 --maxN 5 --minM 5 --maxM 5 --out "$T/graph_strong" --no-zip
 [[ $(count "$T/graph_strong" .inp) -eq 4 ]] && ok "liên thông mạnh: sinh đủ input" || bad "liên thông mạnh: số input sai"
+expect_exit 0 "sinh DAG liên thông với mật độ thưa" "${BIN[@]}" --problem graph --tests 4 --seed 14 --directed 1 --dag 1 --connected 1 --density 1 --minN 10 --maxN 10 --out "$T/graph_sparse" --no-zip
+[[ $(count "$T/graph_sparse" .inp) -eq 4 ]] && awk 'FNR==1 && ($1 != 10 || $2 < 9 || $2 > 30) { bad=1 } END { exit bad }' "$T/graph_sparse"/*.inp && ok "mật độ thưa: sinh đủ DAG liên thông đúng miền số cạnh" || bad "mật độ thưa: thiếu test hoặc sai miền số cạnh"
+expect_exit 0 "sinh đồ thị hai phía dày" "${BIN[@]}" --problem graph --tests 4 --seed 15 --bipartite 1 --connected 1 --density 3 --minN 10 --maxN 10 --out "$T/graph_dense" --no-zip
+[[ $(count "$T/graph_dense" .inp) -eq 4 ]] && awk 'FNR==1 && ($1 != 10 || $2 < 19 || $2 > 25) { bad=1 } END { exit bad }' "$T/graph_dense"/*.inp && ok "mật độ dày: sinh đủ đồ thị hai phía đúng miền số cạnh" || bad "mật độ dày: thiếu test hoặc sai miền số cạnh"
+expect_exit 2 "mật độ cạnh cần đồ thị đơn" "${BIN[@]}" --problem graph --density 1 --simple 0
 expect_exit 2 "DAG cần directed" "${BIN[@]}" --problem graph --dag 1
 expect_exit 2 "liên thông mạnh không kết hợp DAG" "${BIN[@]}" --problem graph --directed 1 --stronglyConnected 1 --dag 1
 expect_exit 2 "dạng bài không tồn tại" "${BIN[@]}" --problem khong_co
@@ -168,8 +186,8 @@ echo "file cua toi" > "$T/keep/ghi_chu.txt"
 echo "== ZIP"
 if command -v unzip > /dev/null; then
     unzip -tq "$T/sol_custom.zip" > /dev/null && ok "unzip -t: ZIP hợp lệ" || bad "unzip -t báo lỗi"
-    [[ $(unzip -Z1 "$T/sol_custom.zip" | wc -l) -eq 32 ]] && ok "ZIP có 30 file test cùng 2 file metadata" || bad "ZIP sai số file"
-    unzip -Z1 "$T/sol_custom.zip" | grep -qx "SHA256SUMS.txt" && unzip -Z1 "$T/sol_custom.zip" | grep -qx "ojgen_info.txt" && ok "ZIP kèm manifest và thông tin seed" || bad "ZIP thiếu metadata"
+    [[ $(unzip -Z1 "$T/sol_custom.zip" | wc -l) -eq 33 ]] && ok "ZIP có 30 input/output cùng 3 file metadata" || bad "ZIP sai số file"
+    unzip -Z1 "$T/sol_custom.zip" | grep -qx "SHA256SUMS.txt" && unzip -Z1 "$T/sol_custom.zip" | grep -qx "ojgen_info.txt" && unzip -Z1 "$T/sol_custom.zip" | grep -qx "ojgen_provenance.json" && ok "ZIP kèm manifest, thông tin seed và provenance" || bad "ZIP thiếu metadata"
 else
     echo "  (bỏ qua: không có lệnh unzip)"
 fi
@@ -179,9 +197,11 @@ echo "== Kiểm định phát hành CLI"
 expect_exit 0 "--audit chạy validator và so sánh lời giải" "${BIN[@]}" --problem array --tests 5 --seed 2024 --solution examples/solutions/array_sol.cpp --validator "$SOL/array_validator.py" --compare-solution "$SOL/array_alt_sol.py" --audit --no-zip --out "$T/audit"
 [[ -f "$T/audit/AUDIT_REPORT.txt" && -f "$T/audit/PACKAGE.txt" && -f "$T/audit/PACKAGE_SHA256SUMS.txt" ]] && ok "audit: lưu báo cáo và manifest gói" || bad "audit: thiếu báo cáo hoặc manifest"
 grep -q "Validator hai chiều" "$T/audit/AUDIT_REPORT.txt" && grep -q "Đối chiếu lời giải" "$T/audit/AUDIT_REPORT.txt" && ok "audit: validator hai chiều và đối chiếu lời giải đạt" || bad "audit: thiếu kết quả kiểm tra"
-grep -q "Giá trị n đo từ input" "$T/audit/AUDIT_REPORT.txt" && grep -q "Độ tin cậy độ phủ" "$T/audit/AUDIT_REPORT.txt" && ok "audit: ghi phép đo input và nhãn tin cậy độ phủ" || bad "audit: thiếu phép đo độ phủ"
+grep -q "Giá trị n đo từ input" "$T/audit/AUDIT_REPORT.txt" && grep -q "Độ tin cậy độ phủ" "$T/audit/AUDIT_REPORT.txt" && grep -q "Phạm vi n: cấu hình nhóm" "$T/audit/ojgen_info.txt" && ok "audit: ghi phép đo, cận nhóm và nhãn tin cậy độ phủ" || bad "audit: thiếu phép đo độ phủ"
 expect_exit 0 "audit chạy checker trên từng test" "${BIN[@]}" --problem array --tests 3 --seed 2024 --solution examples/solutions/array_sol.cpp --checker "$SOL/pass_checker.cpp" --checker-args "{input} {output} {answer}" --checker-timeout 5000 --audit --no-zip --out "$T/audit_checker"
-grep -q "Checker chấp nhận output chính thức trên đủ 3 test" "$T/audit_checker/AUDIT_REPORT.txt" && ok "checker: audit ghi nhận đủ test và timeout" || bad "checker: báo cáo thiếu kết quả"
+grep -q "Checker đạt 3 ca (bao gồm cặp output chính thức và contract" "$T/audit_checker/AUDIT_REPORT.txt" && ok "checker: audit ghi nhận đủ test và timeout" || bad "checker: báo cáo thiếu kết quả"
+expect_exit 0 "audit thực thi contract validator và checker" "${BIN[@]}" --problem array --tests 3 --seed 2024 --minN 1 --maxN 10 --minVal 1 --maxVal 100 --solution examples/solutions/array_sol.cpp --validator "$SOL/array_validator.py" --checker "$SOL/pass_checker.cpp" --checker-args "{input} {output} {answer}" --contract-suite tests/fixtures/array-contract.ojcontract.json --audit --no-zip --out "$T/audit_contract"
+grep -q "khớp 2 ca hợp đồng" "$T/audit_contract/AUDIT_REPORT.txt" && grep -q "Khớp kết quả mong đợi" "$T/audit_contract/AUDIT_REPORT.txt" && ok "contract: audit ghi nhận ca validator/checker chấp nhận và từ chối" || bad "contract: báo cáo thiếu kết quả suite"
 expect_exit 2 "audit chặn checker trả mã lỗi" "${BIN[@]}" --problem array --audit-dir "$T/audit_checker" --no-zip --checker "$SOL/reject_checker.cpp"
 grep -q "Checker" "$T/audit_checker/AUDIT_REPORT.txt" && grep -q "Lỗi khi chạy" "$T/audit_checker/AUDIT_REPORT.txt" && ok "checker: lỗi checker được ghi vào báo cáo" || bad "checker: không ghi nhận lỗi"
 expect_exit 2 "checker từ chối placeholder không hợp lệ" "${BIN[@]}" --problem array --audit-dir "$T/audit_checker" --no-zip --checker "$SOL/pass_checker.cpp" --checker-args "{input} {bad}"
@@ -199,7 +219,7 @@ if [[ -n "${CPP_REF:-}" && -x "$CPP_REF" ]]; then
         eval "set -- $line"
         "$CPP_REF" "$@" --out "$T/cmp_c_$i" --no-zip > /dev/null 2>&1
         "${BIN[@]}" "$@" --out "$T/cmp_j_$i" --no-zip > /dev/null 2>&1
-        if diff -r -x ojgen_info.txt "$T/cmp_c_$i" "$T/cmp_j_$i" > /dev/null; then ok "giống C++: $line"; else bad "KHÁC C++: $line"; fi
+        if diff -r -x ojgen_info.txt -x ojgen_provenance.json "$T/cmp_c_$i" "$T/cmp_j_$i" > /dev/null; then ok "giống C++: $line"; else bad "KHÁC C++: $line"; fi
     done <<'CASES'
 --problem single_n --tests 20 --seed 3
 --problem two_ints --tests 20 --seed 3 --order 1 --minA -50 --maxA 50 --minB -5 --maxB 70

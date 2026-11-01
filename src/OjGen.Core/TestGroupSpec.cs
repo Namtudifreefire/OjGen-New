@@ -9,6 +9,10 @@ public sealed class TestGroupSpec
     public ulong? Seed { get; set; }
     public Config Cfg { get; set; } = new();
     public List<string> CoverageTags { get; set; } = new();
+    /// <summary>Optional judge score for this group. Zero means not assigned.</summary>
+    public int Points { get; set; }
+    /// <summary>Names of groups that must pass before this group is scored.</summary>
+    public List<string> DependsOn { get; set; } = new();
 
     public TestGroupSpec Clone() => new()
     {
@@ -17,5 +21,7 @@ public sealed class TestGroupSpec
         Seed = Seed,
         Cfg = Cfg.Clone(),
         CoverageTags = CoverageTags?.ToList() ?? new List<string>(),
+        Points = Points,
+        DependsOn = DependsOn?.ToList() ?? new List<string>(),
     };
 }

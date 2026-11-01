@@ -87,7 +87,7 @@ public static class DifferentialTester
     private static IEnumerable<string> ShrinkCandidates(string input, Problem problem, Config config)
     {
         string[] lines = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-        if (problem.Id == "array" && lines.Length >= 2 && Util.ParseLL(lines[0].Trim(), out long n))
+        if (problem.Id == "array" && lines.Length >= 2 && Util.ParseLL(lines[0].Trim(), out long arrayCount))
         {
             var values = lines[1].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
             for (int chunk = Math.Max(1, values.Count / 2); chunk >= 1; chunk /= 2)
@@ -95,7 +95,7 @@ public static class DifferentialTester
                 for (int start = 0; start + chunk <= values.Count; start++)
                 {
                     var reduced = values.Where((_, i) => i < start || i >= start + chunk).ToList();
-                    if (reduced.Count < n && reduced.Count > 0)
+                    if (reduced.Count < arrayCount && reduced.Count > 0)
                         yield return reduced.Count + "\n" + string.Join(' ', reduced) + "\n";
                 }
                 if (chunk == 1) break;
@@ -137,6 +137,125 @@ public static class DifferentialTester
                 }
             }
         }
+        else if (problem.Id == "tree" && lines.Length >= 1 && Util.ParseLL(lines[0].Trim(), out long treeN))
+        {
+            // Tree generation numbers parents before children. Removing a suffix of
+            // vertices therefore keeps the prefix connected and only needs re-counting.
+            int treeCount = (int)Math.Clamp(treeN, 1, int.MaxValue);
+            int reducedN = treeCount;
+            for (int chunk = Math.Max(1, treeCount / 2); chunk >= 1; chunk /= 2)
+            {
+                for (int start = Math.Max(1, treeCount - chunk + 1); start >= 2; start--)
+                {
+                    reducedN = start - 1;
+                    if (reducedN < treeCount)
+                        yield return ShrinkTree(lines, reducedN, config);
+                }
+                if (chunk == 1) break;
+            }
+        }
+        else if (problem.Id == "matrix" && lines.Length >= 2 && Util.ParseLL(lines[0].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0], out long matrixN))
+        {
+            string[] header = lines[0].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (header.Length == 2 && Util.ParseLL(header[1], out long matrixM))
+            {
+                for (int remove = Math.Max(1, (int)matrixN / 2); remove >= 1; remove /= 2)
+                {
+                    if (matrixN - remove > 0 && matrixN - remove < matrixN)
+                    {
+                        var rows = lines.Skip(1).Take((int)(matrixN - remove)).ToArray();
+                        yield return $"{matrixN - remove} {matrixM}\n{string.Join('\n', rows)}\n";
+                    }
+                    if (matrixM - remove > 0 && matrixM - remove < matrixM)
+                    {
+                        var rows = lines.Skip(1).Take((int)matrixN).Select(row =>
+                        {
+                            var values = row.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                            return string.Join(' ', values.Take((int)(matrixM - remove)));
+                        });
+                        yield return $"{matrixN} {matrixM - remove}\n{string.Join('\n', rows)}\n";
+                    }
+                    if (remove == 1) break;
+                }
+            }
+            else if (header.Length == 1 && Util.ParseLL(header[0], out long fixedRows))
+            {
+                if (config.I("layout") == 2)
+                {
+                    var first = lines.Length > 1 ? lines[1].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+                    var second = lines.Length > 2 ? lines[2].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+                    for (int remove = Math.Max(1, (int)fixedRows / 2); remove >= 1; remove /= 2)
+                    {
+                        int reducedRows = (int)fixedRows - remove;
+                        if (reducedRows > 0)
+                            yield return $"{reducedRows}\n{string.Join(' ', first.Take(reducedRows))}\n{string.Join(' ', second.Take(reducedRows))}\n";
+                        if (remove == 1) break;
+                    }
+                }
+                else
+                {
+                    for (int remove = Math.Max(1, (int)fixedRows / 2); remove >= 1; remove /= 2)
+                    {
+                        int reducedRows = (int)fixedRows - remove;
+                        if (reducedRows > 0) yield return $"{reducedRows}\n{string.Join('\n', lines.Skip(1).Take(reducedRows))}\n";
+                        if (remove == 1) break;
+                    }
+                }
+            }
+        }
+        else if (problem.Id == "grid" && lines.Length >= 2)
+        {
+            string[] header = lines[0].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (header.Length == 2 && Util.ParseLL(header[0], out long rows) && Util.ParseLL(header[1], out long cols))
+            {
+                for (int remove = Math.Max(1, (int)rows / 2); remove >= 1; remove /= 2)
+                {
+                    int reducedRows = (int)rows - remove;
+                    if (reducedRows > 0) yield return RebuildGrid(lines, reducedRows, (int)cols, config.B("markers"));
+                    if (remove == 1) break;
+                }
+                for (int remove = Math.Max(1, (int)cols / 2); remove >= 1; remove /= 2)
+                {
+                    int m = (int)cols - remove;
+                    if (m > 0) yield return RebuildGrid(lines, (int)rows, m, config.B("markers"));
+                    if (remove == 1) break;
+                }
+            }
+        }
+        else if (problem.Id == "queries" && lines.Length >= 3)
+        {
+            string[] header = lines[0].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (header.Length == 2 && Util.ParseLL(header[0], out long arrayLength) && Util.ParseLL(header[1], out long q))
+            {
+                var queryLines = lines.Skip(2).Where(line => line.Trim().Length > 0).ToList();
+                for (int chunk = Math.Max(1, queryLines.Count / 2); chunk >= 1; chunk /= 2)
+                {
+                    for (int start = 0; start + chunk <= queryLines.Count; start++)
+                    {
+                        var reduced = queryLines.Where((_, i) => i < start || i >= start + chunk).ToList();
+                        if (reduced.Count > 0 && reduced.Count < q)
+                            yield return $"{arrayLength} {reduced.Count}\n{lines[1]}\n{string.Join('\n', reduced)}\n";
+                    }
+                    if (chunk == 1) break;
+                }
+            }
+        }
+        else if (problem.Id == "multi_test" && lines.Length >= 3 && Util.ParseLL(lines[0].Trim(), out long testCount))
+        {
+            var testBlocks = new List<string[]>();
+            for (int line = 1; line + 1 < lines.Length; line += 2)
+                testBlocks.Add(new[] { lines[line], lines[line + 1] });
+            for (int chunk = Math.Max(1, testBlocks.Count / 2); chunk >= 1; chunk /= 2)
+            {
+                for (int start = 0; start + chunk <= testBlocks.Count; start++)
+                {
+                    var reduced = testBlocks.Where((_, i) => i < start || i >= start + chunk).ToList();
+                    if (reduced.Count > 0 && reduced.Count < testCount)
+                        yield return $"{reduced.Count}\n{string.Join('\n', reduced.SelectMany(block => block))}\n";
+                }
+                if (chunk == 1) break;
+            }
+        }
 
         foreach (System.Text.RegularExpressions.Match match in IntegerToken.Matches(input))
         {
@@ -150,6 +269,44 @@ public static class DifferentialTester
                 yield return input[..match.Index] + replacement.ToString(System.Globalization.CultureInfo.InvariantCulture) + input[(match.Index + match.Length)..];
             }
         }
+    }
+
+    private static string ShrinkTree(string[] lines, int n, Config config)
+    {
+        if (config.I("layout") == 1)
+        {
+            string[] parents = lines.Length > 1 ? lines[1].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+            return n == 1 ? "1\n" : $"{n}\n{string.Join(' ', parents.Take(n - 1))}\n";
+        }
+        int width = config.B("weighted") ? 3 : 2;
+        var edges = new List<string>();
+        foreach (string line in lines.Skip(1))
+        {
+            string[] edge = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (edge.Length < 2 || !Util.ParseLL(edge[0], out long u) || !Util.ParseLL(edge[1], out long v)) continue;
+            if (u > n || v > n) continue;
+            edges.Add(string.Join(' ', edge.Take(width)));
+        }
+        return $"{n}\n{string.Join('\n', edges)}\n";
+    }
+
+    private static string RebuildGrid(string[] lines, int rows, int cols, bool markers)
+    {
+        var grid = new List<char[]>();
+        for (int i = 0; i < rows && i + 1 < lines.Length; i++)
+            grid.Add(lines[i + 1].PadRight(cols, '.').Take(cols).ToArray());
+        while (grid.Count < rows) grid.Add(Enumerable.Repeat('.', cols).ToArray());
+        if (markers && rows * cols >= 2)
+        {
+            char filler = grid.SelectMany(row => row).FirstOrDefault(ch => ch is not ('S' or 'T'));
+            if (filler == '\0') filler = '.';
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    if (grid[r][c] is 'S' or 'T') grid[r][c] = filler;
+            grid[0][0] = 'S';
+            grid[rows - 1][cols - 1] = 'T';
+        }
+        return $"{rows} {cols}\n{string.Join('\n', grid.Select(row => new string(row)))}\n";
     }
 
     private static (string Input, int Trials) MinimizeCounterexample(string input, Problem problem, Config config,

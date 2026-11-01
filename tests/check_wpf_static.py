@@ -110,6 +110,25 @@ if os.path.exists(profile_cs):
     for token in ('ProblemProfileFile.From', 'ProblemProfileFile.Load', 'BtnSaveProfile_Click', 'BtnLoadProfile_Click'):
         if token not in profile_code: err(f'ProblemSetupWindow.xaml.cs: thiếu thao tác lưu/mở hồ sơ {token}')
 
+# --- phiên soạn đề, phím tắt và preflight gói
+main_xaml = os.path.join(ROOT, 'MainWindow.xaml')
+main_cs = os.path.join(ROOT, 'MainWindow.xaml.cs')
+if os.path.exists(main_xaml) and os.path.exists(main_cs):
+    main_markup = open(main_xaml, encoding='utf-8-sig').read()
+    main_code = open(main_cs, encoding='utf-8').read()
+    for token in ('PreviewKeyDown=\"MainWindow_PreviewKeyDown\"', 'Ctrl+S', 'Ctrl+Shift+S', 'Ctrl+O'):
+        if token not in main_markup: err(f'MainWindow.xaml: thiếu phím tắt dự án {token}')
+    for token in ('MnuSaveProject_Click', 'MnuSaveProjectAs_Click', 'MnuOpenProject_Click',
+                  'RestoreAutosaveOnStartup', 'SaveProjectSnapshot', 'Key.S', 'Key.O'):
+        if token not in main_code: err(f'MainWindow.xaml.cs: thiếu thao tác dự án {token}')
+
+exporter_cs = os.path.join(ROOT, 'ProblemPackageExporter.cs')
+if os.path.exists(exporter_cs):
+    exporter_code = open(exporter_cs, encoding='utf-8').read()
+    for token in ('ProblemPackageValidator.Validate(packageDirectory, \"OjGen\")',
+                  'ProblemPackageValidator.Validate(packageDirectory, \"Icpc\")', 'VerifyPackageZip'):
+        if token not in exporter_code: err(f'ProblemPackageExporter.cs: thiếu kiểm tra gói {token}')
+
 if errors:
     print('PHÁT HIỆN LỖI:')
     for e in errors: print('  -', e)

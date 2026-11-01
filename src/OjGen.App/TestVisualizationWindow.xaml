@@ -1,0 +1,25 @@
+<Window x:Class="OjGen.Gui.TestVisualizationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Trực quan hóa test" Width="1000" Height="720" MinWidth="780" MinHeight="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}" Style="{StaticResource SlideInWindow}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock x:Name="lblFile" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <TextBlock Text="Kiểu" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="cmbView" Width="150" SelectionChanged="CmbView_SelectionChanged">
+                    <ComboBoxItem Content="Tự nhận diện"/><ComboBoxItem Content="Đồ thị / cây"/><ComboBoxItem Content="Lưới"/><ComboBoxItem Content="Phân phối số"/>
+                </ComboBox>
+            </StackPanel>
+        </DockPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="0.8*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="8"><Canvas x:Name="canvas" Background="Transparent"/></Border>
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="8"><TextBox x:Name="txtInput" IsReadOnly="True" Style="{StaticResource MonoTextBox}"/></Border>
+        </Grid>
+        <TextBlock Grid.Row="2" x:Name="lblSummary" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    </Grid>
+</Window>

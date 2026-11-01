@@ -1,0 +1,15 @@
+{
+  "Version": 1,
+  "BuildExecutable": "g++",
+  "BuildArguments": [
+    "{sourceDir}/main.cpp",
+    "{sourceDir}/helper.cpp",
+    "-O2",
+    "-std=c++17",
+    "-o",
+    "{exe}"
+  ],
+  "RunExecutable": "{exe}",
+  "RunArguments": [],
+  "WorkingDirectory": "{sourceDir}"
+}

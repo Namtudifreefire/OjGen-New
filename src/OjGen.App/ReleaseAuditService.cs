@@ -50,6 +50,7 @@ internal sealed class ReleaseAuditOptions
     public string CheckerPath { get; set; } = "";
     public string CheckerArguments { get; set; } = "{input} {output} {answer}";
     public int CheckerTimeoutMs { get; set; }
+    public string ContractSuitePath { get; set; } = "";
     public string CandidateSolution { get; set; } = "";
     public ulong Seed { get; set; }
     public JobSpec? GeneratedSpec { get; set; }
@@ -183,6 +184,30 @@ internal static class ReleaseAuditService
             if (statement.Errors.Count == 0 && statement.Warnings.Count == 0)
                 report.Add(ReleaseAuditLevel.Pass, "Nội dung đề", "Các mục bắt buộc đã có và sample khớp lời giải chuẩn.");
 
+            var constraintConfigs = options.GeneratedSpec == null
+                ? manualTests.Select(test => test.Cfg).ToList()
+                : options.GeneratedSpec.Groups.Select(group => group.Cfg).Concat(options.GeneratedSpec.ManualTests.Select(test => test.Cfg)).ToList();
+            var structuredConstraints = ConstraintConsistencyChecker.Check(document.Constraints, problem, config, constraintConfigs);
+            foreach (string error in structuredConstraints.Errors) report.Add(ReleaseAuditLevel.Error, "Giới hạn đề và cấu hình", error);
+            foreach (string warning in structuredConstraints.Warnings) report.Add(ReleaseAuditLevel.Warning, "Giới hạn đề và cấu hình", warning);
+            if (structuredConstraints.ParsedBounds > 0 && structuredConstraints.Errors.Count == 0)
+                report.Add(ReleaseAuditLevel.Pass, "Giới hạn đề và cấu hình", $"Đã đối chiếu {structuredConstraints.ParsedBounds} cận số với cấu hình sinh.");
+
+            ValidationContractSuite? contracts = null;
+            if (options.ContractSuitePath.Trim().Length > 0)
+            {
+                if (!File.Exists(options.ContractSuitePath)) report.Add(ReleaseAuditLevel.Error, "Contract suite", "Không tìm thấy file: " + options.ContractSuitePath);
+                else
+                {
+                    try
+                    {
+                        contracts = ValidationContractSuite.Load(options.ContractSuitePath);
+                        report.Add(ReleaseAuditLevel.Info, "Contract suite", $"Đã nạp {contracts.ValidatorCases.Count} ca validator và {contracts.CheckerCases.Count} ca checker.");
+                    }
+                    catch (Exception ex) { report.Add(ReleaseAuditLevel.Error, "Contract suite", "Không đọc được contract suite: " + ex.Message); }
+                }
+            }
+
             List<string> inputs = new();
             if (Directory.Exists(options.TestDirectory)) inputs = FileManager.ListFilesWithExt(options.TestDirectory, ".inp");
             if (!options.IncludeTests)
@@ -201,7 +226,9 @@ internal static class ReleaseAuditService
                 if (options.ExpectedTestCount > 0 && inputs.Count != options.ExpectedTestCount)
                     report.Add(ReleaseAuditLevel.Error, "Số lượng test", $"Mong đợi {options.ExpectedTestCount}, nhưng thư mục có {inputs.Count} input.");
 
-                int invalidInputs = 0, missingOutputs = 0, duplicateInputs = 0, orphanOutputs = 0;
+                int invalidInputs = 0, missingOutputs = 0, duplicateInputs = 0, orphanOutputs = 0, emptyOutputs = 0;
+                var inputSizes = new List<long>(inputs.Count);
+                var outputSizes = new List<long>(inputs.Count);
                 var expectedOutputNames = inputs.Select(path => Path.ChangeExtension(path, ".out")).Select(path => Path.GetFileName(path))
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 foreach (string output in FileManager.ListFilesWithExt(options.TestDirectory, ".out"))
@@ -217,6 +244,7 @@ internal static class ReleaseAuditService
                     if (ct.IsCancellationRequested) { report.Cancelled = true; return report; }
                     string input = inputs[i];
                     string text = FileManager.ReadText(input);
+                    inputSizes.Add(new FileInfo(input).Length);
                     Config testConfig = ConfigFor(config, options.GeneratedSpec, i);
                     if (problem.ValidateInput(text, testConfig) is { } validationError)
                     {
@@ -232,10 +260,17 @@ internal static class ReleaseAuditService
                     }
                     else inputHashes.Add(hash, Path.GetFileName(input));
 
-                    if (!File.Exists(Path.ChangeExtension(input, ".out")))
+                    string outputPath = Path.ChangeExtension(input, ".out");
+                    if (!File.Exists(outputPath))
                     {
                         missingOutputs++;
                         if (missingOutputs <= 10) report.Add(ReleaseAuditLevel.Error, "Thiếu output", $"Không có file .out cho {Path.GetFileName(input)}.");
+                    }
+                    else
+                    {
+                        var outputInfo = new FileInfo(outputPath);
+                        outputSizes.Add(outputInfo.Length);
+                        if (outputInfo.Length == 0) emptyOutputs++;
                     }
                     log.Progress("Kiểm tra test phát hành", i + 1, inputs.Count);
                 }
@@ -243,6 +278,12 @@ internal static class ReleaseAuditService
                 else if (invalidInputs > 10) report.Add(ReleaseAuditLevel.Error, "Định dạng input", $"Còn {invalidInputs - 10} input lỗi không hiển thị.");
                 if (missingOutputs == 0) report.Add(ReleaseAuditLevel.Pass, "Output", $"Đủ output cho cả {inputs.Count} test.");
                 else if (missingOutputs > 10) report.Add(ReleaseAuditLevel.Error, "Output", $"Còn {missingOutputs - 10} output bị thiếu không hiển thị.");
+                if (inputSizes.Count > 0)
+                {
+                    long[] sorted = inputSizes.Order().ToArray();
+                    report.Add(ReleaseAuditLevel.Info, "Kho dữ liệu test", $"Input: nhỏ nhất {Util.FmtBytes((ulong)sorted[0])}, trung vị {Util.FmtBytes((ulong)sorted[sorted.Length / 2])}, lớn nhất {Util.FmtBytes((ulong)sorted[^1])}; output có {outputSizes.Count}/{inputs.Count} file.");
+                }
+                if (emptyOutputs > 0) report.Add(ReleaseAuditLevel.Warning, "Output rỗng", $"Có {emptyOutputs} output rỗng; xác nhận bài cho phép output này.");
                 if (duplicateInputs > 10) report.Add(ReleaseAuditLevel.Warning, "Test trùng lặp", $"Còn {duplicateInputs - 10} test trùng không hiển thị.");
                 if (orphanOutputs > 10) report.Add(ReleaseAuditLevel.Error, "Output mồ côi", $"Còn {orphanOutputs - 10} output không có input không hiển thị.");
 
@@ -292,7 +333,7 @@ internal static class ReleaseAuditService
                 if (inputs.Count == 0)
                     report.Add(ReleaseAuditLevel.Warning, "Validator", "Không thể chạy validator vì chưa có input.");
                 else RunValidator(options.ValidatorPath, inputs, problem, config, options.GeneratedSpec,
-                    settings, log, report, ct);
+                    contracts?.ValidatorCases, settings, log, report, ct);
                 if (report.Cancelled) return report;
             }
             else report.Add(ReleaseAuditLevel.Info, "Validator", "Chưa chọn validator; bước kiểm tra hai chiều được bỏ qua.");
@@ -303,11 +344,12 @@ internal static class ReleaseAuditService
                 else
                 {
                     var checker = CheckerAuditRunner.Run(options.CheckerPath, options.CheckerArguments, inputs,
-                        settings, Path.Combine(Path.GetTempPath(), "OjGen-ReleaseChecker"), log, ct, options.CheckerTimeoutMs);
+                        settings, Path.Combine(Path.GetTempPath(), "OjGen-ReleaseChecker"), log, ct, options.CheckerTimeoutMs,
+                        contracts?.CheckerCases);
                     if (checker.Cancelled) { report.Cancelled = true; return report; }
                     if (checker.Ok)
                     {
-                        report.Add(ReleaseAuditLevel.Pass, "Checker", $"Checker chấp nhận output chính thức trên đủ {checker.Passed} test (timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : settings.TimeoutMs)} ms).\nKết quả từng test:\n{checker.TestDetails}");
+                        report.Add(ReleaseAuditLevel.Pass, "Checker", $"Checker đạt {checker.Passed} ca (bao gồm cặp output chính thức và contract; timeout {(options.CheckerTimeoutMs > 0 ? options.CheckerTimeoutMs : settings.TimeoutMs)} ms).\nKết quả từng ca:\n{checker.TestDetails}");
                         if (checker.SelfTestWarning.Length > 0) report.Add(ReleaseAuditLevel.Warning, "Tự thử checker", checker.SelfTestWarning);
                         else if (checker.MalformedProbeRejected) report.Add(ReleaseAuditLevel.Pass, "Tự thử checker", "Đã từ chối output sai định dạng mẫu.");
                     }
@@ -358,7 +400,8 @@ internal static class ReleaseAuditService
     }
 
     private static void RunValidator(string path, IReadOnlyList<string> inputs, Problem problem, Config config,
-        JobSpec? generatedSpec, Settings settings, IJobLog log, ReleaseAuditReport report, CancellationToken ct)
+        JobSpec? generatedSpec, IReadOnlyList<ValidatorContractCase>? contractCases,
+        Settings settings, IJobLog log, ReleaseAuditReport report, CancellationToken ct)
     {
         string tempRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "OjGen-ReleaseAudit"));
         string tempDir = Path.Combine(tempRoot, Guid.NewGuid().ToString("N"));
@@ -394,10 +437,8 @@ internal static class ReleaseAuditService
             if (invalid.Count == 0)
             {
                 report.Add(ReleaseAuditLevel.Warning, "Validator hai chiều", "Không tạo được biến thể sai mà khuôn hiện có xác nhận; chỉ kiểm tra input hợp lệ.");
-                report.Add(ReleaseAuditLevel.Pass, "Validator", $"Chấp nhận đủ {inputs.Count} input hợp lệ.");
-                return;
             }
-            for (int i = 0; i < invalid.Count; i++)
+            else for (int i = 0; i < invalid.Count; i++)
             {
                 if (ct.IsCancellationRequested) { report.Cancelled = true; return; }
                 string invalidPath = Path.Combine(tempDir, "invalid_" + (i + 1) + ".inp");
@@ -416,7 +457,35 @@ internal static class ReleaseAuditService
                 }
                 rejected++;
             }
-            report.Add(ReleaseAuditLevel.Pass, "Validator hai chiều", $"Chấp nhận đủ {inputs.Count} input hợp lệ và từ chối {rejected} biến thể sai.");
+            int contractPassed = 0;
+            if (contractCases != null)
+            {
+                foreach (var contractCase in contractCases)
+                {
+                    if (ct.IsCancellationRequested) { report.Cancelled = true; return; }
+                    if (contractCase.ExpectedAccepted && problem.ValidateInput(contractCase.Input, config) is { } schemaError)
+                    {
+                        report.Add(ReleaseAuditLevel.Error, "Validator contract", $"Ca '{contractCase.Name}' được khai báo chấp nhận nhưng input sai theo khuôn: {schemaError}");
+                        return;
+                    }
+                    string casePath = Path.Combine(tempDir, "contract_" + contractPassed.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".inp");
+                    File.WriteAllText(casePath, contractCase.Input, new UTF8Encoding(false));
+                    var argv = prepared.Argv.Concat(new[] { casePath }).ToList();
+                    RunResult run = ProcessRunner.Run(argv, casePath, stdout, stderr, tempDir, limits, ct);
+                    if (run.Status == RunStatus.Cancelled) { report.Cancelled = true; return; }
+                    bool accepted = run.Status == RunStatus.Ok || (run.Status == RunStatus.RuntimeError && run.ExitCode == 42);
+                    bool decisive = accepted || (run.Status == RunStatus.RuntimeError && run.ExitCode != 0);
+                    if (!decisive || accepted != contractCase.ExpectedAccepted)
+                    {
+                        report.Add(ReleaseAuditLevel.Error, "Validator contract",
+                            $"Ca '{contractCase.Name}' mong đợi {(contractCase.ExpectedAccepted ? "chấp nhận" : "từ chối")}, thực tế {ProcessRunner.StatusName(run.Status)} (exit {run.ExitCode}).");
+                        return;
+                    }
+                    contractPassed++;
+                }
+            }
+            report.Add(ReleaseAuditLevel.Pass, "Validator hai chiều", $"Chấp nhận đủ {inputs.Count} input hợp lệ và từ chối {rejected} biến thể sai" +
+                (contractCases is { Count: > 0 } ? $"; khớp {contractPassed} ca hợp đồng." : "."));
         }
         catch (Exception ex)
         {

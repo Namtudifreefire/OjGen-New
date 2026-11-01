@@ -41,6 +41,15 @@
                     <TextBox x:Name="txtValidator" />
                 </DockPanel>
                 <TextBlock Text="Nếu chọn validator, OjGen sẽ chạy nó trên mọi input và kiểm tra nó từ chối các input sai mẫu. Validator cần đọc stdin hoặc nhận đường dẫn input ở argv[1]." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,2,3,4" />
+                <TextBlock Text="Ca kiểm thử hợp đồng validator/checker · JSON *.ojcontract.json (tùy chọn)" Style="{StaticResource FieldLabel}" />
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="Chọn…" Click="BtnBrowseContracts_Click" Style="{StaticResource OutlineButton}" />
+                        <Button Content="Tạo mẫu…" Click="BtnCreateContractTemplate_Click" Style="{StaticResource OutlineButton}" Margin="5,0,0,0" />
+                    </StackPanel>
+                    <TextBox x:Name="txtContractSuite" ToolTip="Khai báo các ca phải được chấp nhận hoặc từ chối; được lưu cùng dự án." />
+                </DockPanel>
+                <TextBlock Text="Các ca khai báo sẽ được chạy trong kiểm định phát hành. Ca chấp nhận của validator phải hợp lệ theo khuôn; checker trả exit code 0 để chấp nhận và exit code khác 0 để từ chối. Validator/checker được chạy trên máy bạn với quyền hiện tại." Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="3,2,3,4" />
                 <TextBlock Text="Lời giải độc lập để đối chiếu (tùy chọn)" Style="{StaticResource FieldLabel}" />
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Content="Chọn…" Click="BtnBrowseCandidate_Click" Style="{StaticResource OutlineButton}" />

@@ -111,6 +111,7 @@ public static class JobPlanner
         public bool ZipIncomplete { get; set; }
         public bool Overwrite { get; set; }
         public bool Rebuild { get; set; }
+        public bool Resume { get; set; }
         public string ProblemName { get; set; } = "";
         public string ProblemCode { get; set; } = "";
         public IReadOnlyList<TestGroupSpec> Groups { get; set; } = Array.Empty<TestGroupSpec>();
@@ -127,6 +128,7 @@ public static class JobPlanner
         spec = null;
         policy = o.Overwrite ? ExistingPolicy.Overwrite : ExistingPolicy.NewDir;
         if (model.Validate() is { } ve) return ve;
+        if (o.Resume && o.Overwrite) return "Không dùng đồng thời Tiếp tục và Ghi đè; hãy tắt Ghi đè để giữ checkpoint.";
         if (!Util.ParseLL(o.TestsText, out long tests) || tests < 1 || tests > Generator.MaxTests)
             return $"Số lượng test phải là số nguyên trong [1, {Generator.MaxTests}].";
         ulong? seed = null;
@@ -189,6 +191,7 @@ public static class JobPlanner
             Zip = o.Zip ? ZipMode.Yes : ZipMode.No,
             ZipIncomplete = o.ZipIncomplete,
             ForceRebuild = o.Rebuild,
+            ResumeGeneration = o.Resume,
             ProblemName = o.ProblemName.Trim(),
             ProblemCode = problemCode,
             Groups = o.Groups.Select(g => g.Clone()).ToList(),

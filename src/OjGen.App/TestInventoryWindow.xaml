@@ -1,0 +1,44 @@
+<Window x:Class="OjGen.Gui.TestInventoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kiểm kê bộ test" Width="1180" Height="760" MinWidth="920" MinHeight="600"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}" Style="{StaticResource SlideInWindow}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock x:Name="lblDirectory" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <Button DockPanel.Dock="Right" Content="Tải lại" Click="BtnReload_Click" Padding="12,6" Style="{StaticResource OutlineButton}"/>
+        </DockPanel>
+        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
+            <TextBox x:Name="txtFilter" Width="190" ToolTip="Lọc tên, nhóm, nhãn, trạng thái" TextChanged="TxtFilter_TextChanged"/>
+            <TextBox x:Name="txtRenamePrefix" Width="130" Margin="6,0,0,0" ToolTip="Tiền tố tên test mới"/>
+            <Button Content="Đổi tên test chọn" Click="BtnRename_Click" Padding="10,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <TextBox x:Name="txtGroup" Width="130" Margin="14,0,0,0" ToolTip="Nhóm đích"/>
+            <TextBox x:Name="txtTags" Width="155" Margin="5,0,0,0" ToolTip="Nhãn, phân cách bằng dấu phẩy"/>
+            <Button Content="Chuyển nhóm" Click="BtnAssignGroup_Click" Padding="10,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <Button Content="Xem trực quan" Click="BtnVisualize_Click" Padding="10,6" Margin="14,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <Button Content="Kiểm tra lại input" Click="BtnValidate_Click" Padding="10,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <TextBox x:Name="txtCheckerArgs" Width="210" Text="{}{input} {output} {answer}" Margin="12,0,0,0" ToolTip="Mẫu đối số checker; hỗ trợ {input}, {output}, {answer}, {test}. Không chạy qua shell."/>
+            <Button Content="Chạy checker lại…" Click="BtnRunChecker_Click" Padding="10,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <Button Content="Xuất CSV…" Click="BtnExport_Click" Padding="10,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}"/>
+        </WrapPanel>
+        <DataGrid Grid.Row="2" x:Name="gridTests" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" CanUserSortColumns="True" CanUserAddRows="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Tên" Binding="{Binding Name}" Width="140"/>
+                <DataGridTextColumn Header="Nhóm" Binding="{Binding Group}" Width="120"/>
+                <DataGridTextColumn Header="Nhãn" Binding="{Binding Tags}" Width="140"/>
+                <DataGridTextColumn Header="Input B" Binding="{Binding InputBytes}" Width="80"/>
+                <DataGridTextColumn Header="Output B" Binding="{Binding OutputBytes}" Width="85"/>
+                <DataGridTextColumn Header="Min số" Binding="{Binding NumericMin, StringFormat={}{0:G6}}" Width="85"/>
+                <DataGridTextColumn Header="Max số" Binding="{Binding NumericMax, StringFormat={}{0:G6}}" Width="85"/>
+                <DataGridTextColumn Header="Trùng với" Binding="{Binding DuplicateOf}" Width="100"/>
+                <DataGridTextColumn Header="Kiểm định" Binding="{Binding Validation}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <DockPanel Grid.Row="3" Margin="0,8,0,0">
+            <TextBlock x:Name="lblSummary" Style="{StaticResource HintText}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            <Button DockPanel.Dock="Right" Content="Đóng" Click="BtnClose_Click" Padding="16,7" IsCancel="True" Style="{StaticResource OutlineButton}"/>
+        </DockPanel>
+    </Grid>
+</Window>

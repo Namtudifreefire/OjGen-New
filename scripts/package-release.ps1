@@ -16,6 +16,9 @@ if ($Version -ne $sourceVersion) { throw "Version '$Version' khác nguồn chu�
 
 $notesPath = Join-Path $repoRoot "RELEASE_NOTES_v$Version.md"
 if (-not (Test-Path -LiteralPath $notesPath -PathType Leaf)) { throw "Thiếu release notes: $notesPath" }
+$releaseNotes = Get-Content -LiteralPath $notesPath -Raw
+if ($releaseNotes -notmatch "(?m)^# OjGen\s+$([regex]::Escape($Version))\s*$") { throw "Release notes phải có tiêu đề '# OjGen $Version'." }
+if ($releaseNotes -match '(?im)^\s*(TODO|TBD|FIXME)\b') { throw 'Release notes còn placeholder TODO/TBD/FIXME.' }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = Join-Path $repoRoot 'artifacts\release' }
 if (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory = Join-Path $repoRoot $OutputDirectory }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -74,6 +77,12 @@ try {
 
     $versionOutput = (& $cliExe --version | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch [regex]::Escape($Version)) { throw "CLI smoke test --version thất bại: $versionOutput" }
+    foreach ($executable in @($guiExe, $cliExe)) {
+        $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($executable).ProductVersion
+        if ([string]::IsNullOrWhiteSpace($productVersion) -or $productVersion -notmatch [regex]::Escape($Version)) {
+            throw "Metadata phiên bản của $([System.IO.Path]::GetFileName($executable)) không khớp $Version (nhận: '$productVersion')."
+        }
+    }
     $env:OJGEN_SELFTEST_ROOT = Join-Path $repoRoot 'output/.selftest'
     & $cliExe --selftest
     if ($LASTEXITCODE -ne 0) { throw 'CLI smoke test --selftest thất bại.' }
@@ -90,6 +99,21 @@ try {
     }
     Copy-Item -LiteralPath $notesPath -Destination (Join-Path $packageDirectory "RELEASE_NOTES_v$Version.md")
 
+    $regressionStatus = if ($SkipTests) { 'Skipped in this invocation; run separately or rely on CI result.' } else { 'Passed.' }
+    $preflight = @(
+        "OjGen release preflight",
+        "Version: $Version",
+        "Release notes: passed",
+        "Regression suite: $regressionStatus",
+        "WPF static check: passed",
+        "CLI --version and --selftest: passed",
+        "GUI smoke launch: passed",
+        "GUI executable: GUI/OjGen.exe",
+        "CLI executable: CLI/ojgen.exe",
+        "Package layout and SHA-256 manifests are verified before this package is returned."
+    )
+    [System.IO.File]::WriteAllLines((Join-Path $packageDirectory 'RELEASE_PREFLIGHT.txt'), $preflight, [System.Text.UTF8Encoding]::new($false))
+
     $sumLines = [System.Collections.Generic.List[string]]::new()
     Get-ChildItem -LiteralPath $packageDirectory -File -Recurse | Sort-Object FullName | ForEach-Object {
         $relative = [System.IO.Path]::GetRelativePath($packageDirectory, $_.FullName).Replace('\', '/')
@@ -98,20 +122,39 @@ try {
     }
     [System.IO.File]::WriteAllLines((Join-Path $packageDirectory 'SHA256SUMS.txt'), $sumLines, [System.Text.UTF8Encoding]::new($false))
 
+    $expectedFiles = @(Get-ChildItem -LiteralPath $packageDirectory -File -Recurse |
+        Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+        ForEach-Object { [System.IO.Path]::GetRelativePath($packageDirectory, $_.FullName).Replace('\', '/') } | Sort-Object)
+    $manifestFiles = @(Get-Content -LiteralPath (Join-Path $packageDirectory 'SHA256SUMS.txt') |
+        Where-Object { $_ -match '^[0-9a-f]{64}  ' } |
+        ForEach-Object { $_.Substring(66) } | Sort-Object)
+    if (Compare-Object -ReferenceObject $expectedFiles -DifferenceObject $manifestFiles) { throw 'SHA256SUMS.txt không khớp danh sách file của gói.' }
+    foreach ($line in Get-Content -LiteralPath (Join-Path $packageDirectory 'SHA256SUMS.txt')) {
+        $relative = $line.Substring(66).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+        $expectedHash = $line.Substring(0, 64).ToLowerInvariant()
+        $actualHash = (Get-FileHash -LiteralPath (Join-Path $packageDirectory $relative) -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $expectedHash) { throw "SHA-256 không khớp trong gói: $relative" }
+    }
+
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::CreateFromDirectory($packageDirectory, $zipPath,
         [System.IO.Compression.CompressionLevel]::Optimal, $true)
     $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
     try {
-        $entryNames = @($archive.Entries | ForEach-Object FullName)
+        $entryNames = @($archive.Entries | Where-Object { -not $_.FullName.EndsWith('/') } | ForEach-Object FullName)
         foreach ($expected in @("$packageName/GUI/OjGen.exe", "$packageName/CLI/ojgen.exe", "$packageName/SHA256SUMS.txt")) {
             if ($expected -notin $entryNames) { throw "ZIP thiếu file: $expected" }
         }
         if ($entryNames | Where-Object { $_ -notlike "$packageName/*" }) { throw 'ZIP có file nằm ngoài thư mục gốc đã định.' }
+        $expectedEntries = @($expectedFiles + @('SHA256SUMS.txt') | ForEach-Object { "$packageName/$_" } | Sort-Object)
+        $actualEntries = @($entryNames | Sort-Object)
+        if (Compare-Object -ReferenceObject $expectedEntries -DifferenceObject $actualEntries) { throw 'Danh sách file trong ZIP khác với thư mục gói.' }
     }
     finally { $archive.Dispose() }
     $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     [System.IO.File]::WriteAllText($zipHashPath, "$zipHash  $([System.IO.Path]::GetFileName($zipPath))`n", [System.Text.UTF8Encoding]::new($false))
+    $sidecar = (Get-Content -LiteralPath $zipHashPath -Raw).Trim()
+    if (-not $sidecar.StartsWith("$zipHash  ", [System.StringComparison]::OrdinalIgnoreCase)) { throw 'SHA256 sidecar không khớp ZIP.' }
 
     Write-Host "Package: $packageDirectory"
     Write-Host "ZIP: $zipPath"

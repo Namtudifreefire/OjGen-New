@@ -30,9 +30,6 @@ public static class CoverageAnalyzer
     private static readonly string[] StressWords = { "stress", "large", "max", "lớn", "khổng lồ" };
     private static readonly string[] RandomWords = { "random", "ngẫu", "rand" };
 
-    private static bool HasWord(IEnumerable<string> names, IEnumerable<string> words) =>
-        names.Any(name => words.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)));
-
     private static bool IsSizeParameter(string key)
     {
         string k = key.ToLowerInvariant();
@@ -57,6 +54,11 @@ public static class CoverageAnalyzer
             _ => null,
         };
     }
+
+    private static bool HasRole(IEnumerable<TestGroupSpec> groups, IEnumerable<string> words) =>
+        groups.Any(group => words.Any(word =>
+            group.Name.Contains(word, StringComparison.OrdinalIgnoreCase) ||
+            (group.CoverageTags ?? new List<string>()).Any(tag => tag.Contains(word, StringComparison.OrdinalIgnoreCase))));
 
     private static bool TryNumber(string value, out long number) => Util.ParseLL(value, out number);
 
@@ -153,12 +155,11 @@ public static class CoverageAnalyzer
             catch (Exception) { }
         }
         sizes.Sort();
-        var groupNames = groups.Select(group => group.Name).ToList();
         var measurements = MeasureDimensions(problem, inputs, groups, manualTests);
-        bool small = HasWord(groupNames, SmallWords);
-        bool boundary = HasWord(groupNames, BoundaryWords);
-        bool stress = HasWord(groupNames, StressWords);
-        bool random = HasWord(groupNames, RandomWords);
+        bool small = HasRole(groups, SmallWords);
+        bool boundary = HasRole(groups, BoundaryWords);
+        bool stress = HasRole(groups, StressWords);
+        bool random = HasRole(groups, RandomWords);
         int sampleCount = manualTests.Count(test => test.IsSample);
         var observedTags = groups.SelectMany(group => group.CoverageTags ?? new List<string>())
             .Select(tag => tag.Trim().ToLowerInvariant()).Where(tag => tag.Length > 0)
@@ -178,13 +179,21 @@ public static class CoverageAnalyzer
         if (observedTags.Count > 0)
             report.Observations.Add("Nhãn độ phủ đã khai báo: " + string.Join(", ", observedTags.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)) + ".");
         report.Confidence = measurements.Count > 0
-            ? "Có đo kích thước thực tế ở các định dạng nhận diện được; các nhận định còn lại là heuristic"
+            ? "Đã đo kích thước ở định dạng nhận diện và so với min/max trong cấu hình nhóm; tỷ lệ phủ chỉ là khoảng số học, phân loại logic vẫn heuristic"
             : "Heuristic (không nhận diện được trường kích thước của input)";
         if (observedTags.Count > 0) report.Confidence += "; nhãn do người dùng khai báo";
-        if (small) report.Observations.Add("Có nhóm được đặt tên theo test nhỏ.");
-        if (boundary) report.Observations.Add("Có nhóm được đặt tên theo trường hợp biên.");
-        if (random) report.Observations.Add("Có nhóm ngẫu nhiên.");
-        if (stress) report.Observations.Add("Có nhóm stress/kích thước lớn.");
+        void DescribeRole(bool present, IEnumerable<string> words, string label)
+        {
+            if (!present) return;
+            var roleGroups = groups.Where(group =>
+                words.Any(word => group.Name.Contains(word, StringComparison.OrdinalIgnoreCase) ||
+                    (group.CoverageTags ?? new List<string>()).Any(tag => tag.Contains(word, StringComparison.OrdinalIgnoreCase)))).ToList();
+            report.Observations.Add($"Nhóm {label}: {roleGroups.Count} nhóm, {roleGroups.Sum(group => group.TestCount)} test; nhận diện từ tên/nhãn nhóm.");
+        }
+        DescribeRole(small, SmallWords, "test nhỏ");
+        DescribeRole(boundary, BoundaryWords, "trường hợp biên");
+        DescribeRole(random, RandomWords, "ngẫu nhiên");
+        DescribeRole(stress, StressWords, "stress/kích thước lớn");
         if (sampleCount > 0) report.Observations.Add($"Có {sampleCount} test mẫu nhập tay.");
 
         foreach (var param in problem.Params.Where(param => param.Options is { Count: > 1 }))
@@ -198,36 +207,53 @@ public static class CoverageAnalyzer
             var missing = options.Where(option => !used.Contains(option.Value)).ToList();
             if (present.Count > 0)
                 report.Observations.Add($"{param.DisplayLabel}: {string.Join(", ", present.Select(option => option.Label))}.");
-            if (missing.Count > 0 && report.Suggestions.Count < 8)
+            if (missing.Count > 0 && report.Suggestions.Count < 12)
                 report.Suggestions.Add($"Thêm nhóm cho '{param.DisplayLabel}': {string.Join(", ", missing.Select(option => option.Label))}.");
         }
 
         foreach (string requiredTag in (requiredCoverageTags ?? Array.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (observedTags.Contains(requiredTag)) continue;
-            if (report.Suggestions.Count < 8)
+            if (report.Suggestions.Count < 12)
                 report.Suggestions.Add($"Thiếu nhóm test có nhãn độ phủ bắt buộc '{requiredTag}'.");
         }
 
         var configs = groups.Select(group => group.Cfg).Concat(manualTests.Select(test => test.Cfg)).ToList();
+        if (configs.Count == 0) configs.Add(problem.DefaultConfig());
         foreach (var lowParam in problem.Params.Where(param => param.Type == ParamType.Int && param.Key.StartsWith("min", StringComparison.OrdinalIgnoreCase) && IsSizeParameter(param.Key)))
         {
             var highParam = problem.Params.FirstOrDefault(param => param.Type == ParamType.Int && param.Key.Equals("max" + lowParam.Key[3..], StringComparison.OrdinalIgnoreCase));
             string? dimension = Dimension(lowParam.Key);
-            if (highParam == null || dimension == null || !measurements.TryGetValue(dimension, out var observed) || observed.Count == 0 || configs.Count == 0) continue;
+            if (highParam == null || dimension == null || !measurements.TryGetValue(dimension, out var observed) || observed.Count == 0) continue;
             long allowedLow = configs.Min(config => config.I(lowParam.Key));
             long allowedHigh = configs.Max(config => config.I(highParam.Key));
+            if (problem is GraphProblem graph && dimension == "m")
+            {
+                var graphBounds = configs.Select(config =>
+                {
+                    bool valid = graph.TryGetEffectiveEdgeBounds(config, out long lower, out long upper);
+                    return (Valid: valid, Lower: lower, Upper: upper);
+                }).Where(bounds => bounds.Valid).ToList();
+                if (graphBounds.Count > 0)
+                {
+                    allowedLow = graphBounds.Min(bounds => bounds.Lower);
+                    allowedHigh = graphBounds.Max(bounds => bounds.Upper);
+                }
+            }
             long actualLow = observed.Min(), actualHigh = observed.Max();
-            if (actualLow > allowedLow && report.Suggestions.Count < 8)
-                report.Suggestions.Add($"Thêm test cố định ở biên thấp {lowParam.DisplayLabel}: cấu hình cho phép {Util.LL(allowedLow)}, nhưng input nhỏ nhất đo được là {Util.LL(actualLow)}.");
-            if (actualHigh < allowedHigh && report.Suggestions.Count < 8)
-                report.Suggestions.Add($"Thêm test cố định ở biên cao {highParam.DisplayLabel}: cấu hình cho phép {Util.LL(allowedHigh)}, nhưng input lớn nhất đo được là {Util.LL(actualHigh)}.");
+            decimal span = allowedHigh == allowedLow ? (actualLow == allowedLow ? 100m : 0m)
+                : Math.Clamp(((decimal)actualHigh - actualLow) / ((decimal)allowedHigh - allowedLow) * 100m, 0m, 100m);
+            report.Observations.Add($"Phạm vi {dimension}: cấu hình nhóm [{Util.LL(allowedLow)}, {Util.LL(allowedHigh)}], đo [{Util.LL(actualLow)}, {Util.LL(actualHigh)}] từ {observed.Count} input; phủ khoảng số học khoảng {span:0.#}%.");
+            if (actualLow > allowedLow && report.Suggestions.Count < 12)
+                report.Suggestions.Add($"Biên thấp {lowParam.DisplayLabel} chưa được chạm: hồ sơ cho phép {Util.LL(allowedLow)}, input nhỏ nhất là {Util.LL(actualLow)}. Thêm test cố định tại cận thấp.");
+            if (actualHigh < allowedHigh && report.Suggestions.Count < 12)
+                report.Suggestions.Add($"Biên cao {highParam.DisplayLabel} chưa được chạm: hồ sơ cho phép {Util.LL(allowedHigh)}, input lớn nhất là {Util.LL(actualHigh)}. Thêm test cố định tại cận cao.");
         }
 
-        if (!small && report.Suggestions.Count < 8) report.Suggestions.Add("Thêm nhóm 'Nhỏ' để kiểm tra input tối thiểu và các trường hợp ít phần tử.");
-        if (!boundary && report.Suggestions.Count < 8) report.Suggestions.Add("Thêm nhóm 'Biên' cho giá trị sát giới hạn, rỗng/gần rỗng hoặc cấu trúc đặc biệt.");
-        if (!random && report.Suggestions.Count < 8) report.Suggestions.Add("Thêm nhóm 'Ngẫu nhiên' với seed cố định để dễ tái lập.");
-        if (!stress && report.Suggestions.Count < 8) report.Suggestions.Add("Thêm nhóm 'Stress' gần giới hạn lớn nhất để kiểm tra thời gian và bộ nhớ.");
+        if (!small && report.Suggestions.Count < 12) report.Suggestions.Add("Chưa có nhóm/nhãn 'small'; thêm input ít phần tử hoặc kích thước nhỏ để kiểm tra các trường hợp tối thiểu.");
+        if (!boundary && report.Suggestions.Count < 12) report.Suggestions.Add("Chưa có nhóm/nhãn 'boundary'; thêm test cố định tại cận số học và các cấu trúc đặc biệt của đề.");
+        if (!random && report.Suggestions.Count < 12) report.Suggestions.Add("Chưa có nhóm/nhãn 'random'; thêm nhóm ngẫu nhiên với seed cố định để dễ tái lập.");
+        if (!stress && report.Suggestions.Count < 12) report.Suggestions.Add("Chưa có nhóm/nhãn 'stress'; thêm test gần giới hạn lớn nhất để kiểm tra thời gian và bộ nhớ.");
 
         if (report.Observations.Count == 0) report.Observations.Add("Chưa có metadata cấu hình hoặc kích thước input để phân loại thêm.");
         return report;

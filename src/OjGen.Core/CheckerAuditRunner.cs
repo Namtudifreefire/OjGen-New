@@ -69,7 +69,8 @@ public static class CheckerAuditRunner
 
     public static CheckerAuditResult Run(string checkerPath, string argumentsTemplate,
         IReadOnlyList<string> inputs, Settings settings, string tempRoot, IJobLog log,
-        CancellationToken ct = default, int timeoutMs = 0)
+        CancellationToken ct = default, int timeoutMs = 0,
+        IReadOnlyList<CheckerContractCase>? contractCases = null)
     {
         if (string.IsNullOrWhiteSpace(checkerPath) || !File.Exists(checkerPath))
             return new CheckerAuditResult { Error = "Không tìm thấy file checker đã chọn." };
@@ -138,6 +139,34 @@ public static class CheckerAuditRunner
                         ProcessRunner.StatusName(run.Status) + " / exit " + run.ExitCode, failure));
                 }
                 log.Progress("Chạy checker", i + 1, inputs.Count);
+            }
+            if (contractCases != null)
+            {
+                foreach (var contractCase in contractCases)
+                {
+                    if (ct.IsCancellationRequested)
+                        return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy ca hợp đồng checker.", Tests = testResults };
+                    string stem = "checker.contract." + testResults.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    string inputPath = Path.Combine(tempDir, stem + ".inp");
+                    string outputPath = Path.Combine(tempDir, stem + ".out");
+                    string answerPath = Path.Combine(tempDir, stem + ".ans");
+                    File.WriteAllText(inputPath, contractCase.Input, new UTF8Encoding(false));
+                    File.WriteAllText(outputPath, contractCase.ContestantOutput, new UTF8Encoding(false));
+                    File.WriteAllText(answerPath, contractCase.Answer, new UTF8Encoding(false));
+                    var argv = prepared.Argv.Concat(template.Select(value => BuildArg(value, inputPath, outputPath, answerPath, contractCase.Name))).ToList();
+                    RunResult run = ProcessRunner.Run(argv, null, stdout, stderr, tempDir, runLimits, ct);
+                    if (run.Status == RunStatus.Cancelled)
+                        return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy ca hợp đồng checker.", Tests = testResults };
+                    bool actualAccepted = run.Status == RunStatus.Ok;
+                    bool decisive = actualAccepted || (run.Status == RunStatus.RuntimeError && run.ExitCode != 0);
+                    bool acceptedAsExpected = decisive && actualAccepted == contractCase.ExpectedAccepted;
+                    if (acceptedAsExpected) passed++;
+                    else failures.Add($"{contractCase.Name}: mong đợi {(contractCase.ExpectedAccepted ? "chấp nhận" : "từ chối")}, nhận {ProcessRunner.StatusName(run.Status)} (exit {run.ExitCode}).");
+                    string detail = acceptedAsExpected ? "Khớp kết quả mong đợi" : $"Mong đợi {(contractCase.ExpectedAccepted ? "chấp nhận" : "từ chối")}; thực tế {ProcessRunner.StatusName(run.Status)} / exit {run.ExitCode}";
+                    testResults.Add(new CheckerTestResult(contractCase.Name, acceptedAsExpected, run.ElapsedMs,
+                        acceptedAsExpected ? (actualAccepted ? "Chấp nhận đúng" : "Từ chối đúng") : "Sai hợp đồng", detail));
+                    log.Progress("Kiểm tra hợp đồng checker", passed + failures.Count, inputs.Count + contractCases.Count);
+                }
             }
             string error = failures.Count == 0 ? "" : string.Join("\n", failures.Take(10)) +
                 (failures.Count > 10 ? $"\n… còn {failures.Count - 10} test checker lỗi." : "");

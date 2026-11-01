@@ -14,6 +14,22 @@
 - Xuất Kattis Problem Package Format 2025-09 release candidate với metadata, statement, test, lời giải và launcher validator.
 - Mở rộng bộ hồi quy CLI với kiểm tra checker/audit, kế hoạch nhóm, import và so sánh test; quy trình đóng gói đọc release notes theo phiên bản nguồn.
 - Quy trình gói phát hành kèm hướng dẫn plugin; checkpoint runtime được loại khỏi Git.
+- Thêm workspace `.ojproject` lưu cấu hình, statement, test tay/mẫu, kế hoạch nhóm và đường dẫn; khôi phục autosave sau khi khởi động lại.
+- `--resume` và GUI tiếp tục cả bước tạo output; output đã khớp input, lời giải và SHA-256 được giữ lại.
+- Thu nhỏ phản ví dụ theo cấu trúc cây, ma trận, lưới, truy vấn và nhiều bộ test; chỉ chạy lại ứng viên hợp lệ.
+- Thêm mật độ đồ thị thưa/vừa/dày được tính theo số cạnh tối đa hợp lệ, kết hợp cờ liên thông/DAG/hai phía; giữ chế độ minM/maxM tự đặt.
+- Khai báo ca chấp nhận/từ chối validator và checker trong `.ojcontract.json`; dùng chung cho GUI, audit và CLI.
+- Đối chiếu các cận số trong statement với cấu hình nhóm; báo phạm vi n/m/q/t thực đo so với min/max của nhóm và nêu biên chưa chạm; ghi inventory CSV và provenance JSON có hash theo từng input/output.
+- Mở rộng hồi quy CLI cho contract suite, checkpoint output và mật độ đồ thị; kiểm tra tĩnh GUI cho phím tắt dự án và preflight package.
+- Kiểm tra cấu trúc, cặp input/output và checksum thực tế cho gói OjGen/Kattis; preflight release xác minh phiên bản, notes, ZIP và manifests.
+- Thêm cửa sổ kiểm kê test có lọc, đổi tên/nhóm hàng loạt, min/max, kích thước, trùng lặp, thiếu output, CSV và trực quan đồ thị/cây/lưới/phân phối.
+- Thêm ma trận nhiều lời giải để tìm test phân biệt với lời giải chuẩn; chạy lại validator input hoặc checker trên test cũ mà không sinh lại input/output.
+- Kế hoạch nhóm hỗ trợ điểm, nhóm tiên quyết và thứ tự judge; package OjGen có thể lưu kế hoạch nhóm.
+- Bổ sung checker scaffold Testlib, số thực, token không thứ tự và validator theo khuôn kèm ca hợp đồng tự sinh.
+- Statement preview hỗ trợ bảng, ảnh HTTPS và các biểu thức TeX cơ bản, bên cạnh nội dung đa ngôn ngữ.
+- Thêm run profile `.ojrun.json` cho lệnh build/run nhiều file; runner đơn file thêm C, Rust, Go, Pascal và Kotlin.
+- Hàng đợi GUI tự lưu/khôi phục, đổi thứ tự, chỉnh seed/output/kế hoạch, giữ việc lỗi để thử lại.
+- Benchmark báo median/p95/working set theo nhóm và ghi hệ điều hành, runtime, kiến trúc, số CPU logic.
 
 ## 3.2.0 — 2026-10-31
 

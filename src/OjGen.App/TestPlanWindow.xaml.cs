@@ -83,10 +83,24 @@ public partial class TestPlanWindow : Window
             lblError.Text = "⚠ " + tagError;
             return false;
         }
+        if (!int.TryParse(txtPoints.Text.Trim(), out int points) || points < 0 || points > 100)
+        {
+            lblError.Text = "⚠ Điểm nhóm phải là số nguyên trong [0, 100].";
+            return false;
+        }
+        var dependencies = txtDependencies.Text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (dependencies.Any(value => string.Equals(value, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            lblError.Text = "⚠ Nhóm không thể phụ thuộc vào chính nó.";
+            return false;
+        }
         _current.Name = name;
         _current.TestCount = (int)count;
         _current.Seed = seed;
         _current.CoverageTags = coverageTags;
+        _current.Points = points;
+        _current.DependsOn = dependencies;
         _current.Cfg = _model.Effective();
         lstGroups.Items.Refresh();
         UpdateStatus();
@@ -102,6 +116,8 @@ public partial class TestPlanWindow : Window
         txtCount.Text = group.TestCount.ToString();
         txtSeed.Text = group.Seed is { } seed ? Util.LL(seed) : "";
         txtCoverageTags.Text = string.Join(", ", group.CoverageTags ?? new List<string>());
+        txtPoints.Text = group.Points.ToString();
+        txtDependencies.Text = string.Join(", ", group.DependsOn ?? new List<string>());
         _model = new ConfigModel(_problem, group.Cfg);
         _form = new ParamForm(_model, paramHost);
         _form.Changed += OnModelChanged;
@@ -210,6 +226,7 @@ public partial class TestPlanWindow : Window
         if (!StoreCurrent()) return;
         if (TestCoverageTags.Parse(txtRequiredCoverageTags.Text, out var requiredTags) is { } requiredError)
         { lblError.Text = "⚠ " + requiredError; return; }
+        if (!ValidateGroupRules(out string? groupError)) { lblError.Text = "⚠ " + groupError; return; }
         long total = _groups.Sum(group => (long)group.TestCount);
         if (total > Generator.MaxTests) { lblError.Text = $"Tổng số test không được vượt quá {Generator.MaxTests}."; return; }
         var dialog = new SaveFileDialog
@@ -227,6 +244,17 @@ public partial class TestPlanWindow : Window
             lblError.Text = "Kế hoạch đã được lưu.";
         }
         catch (Exception ex) { lblError.Text = "Không lưu được kế hoạch: " + ex.Message; }
+    }
+
+    private bool ValidateGroupRules(out string? error)
+    {
+        try
+        {
+            _ = TestPlanProfile.From(_problem, _groups, Array.Empty<string>()).ToGroups(_problem);
+            error = null;
+            return true;
+        }
+        catch (Exception ex) { error = ex.Message; return false; }
     }
 
     private void BtnLoadPlan_Click(object sender, RoutedEventArgs e)
@@ -278,6 +306,11 @@ public partial class TestPlanWindow : Window
         if (total > Generator.MaxTests)
         {
             lblError.Text = $"Tổng số test không được vượt quá {Generator.MaxTests}.";
+            return;
+        }
+        if (!ValidateGroupRules(out string? groupError))
+        {
+            lblError.Text = "⚠ " + groupError;
             return;
         }
         Groups = _groups.Select(group => group.Clone()).ToList();

@@ -1,0 +1,43 @@
+<Window x:Class="OjGen.Gui.SolutionMatrixWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Ma trận lời giải" Width="1120" Height="730" MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}" Style="{StaticResource SlideInWindow}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock x:Name="lblFolder" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <Button DockPanel.Dock="Right" Content="＋ Thêm lời giải…" Click="BtnAdd_Click" Padding="12,6" Style="{StaticResource OutlineButton}"/>
+        </DockPanel>
+        <DataGrid Grid.Row="1" x:Name="gridSolutions" AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single" SelectionUnit="FullRow">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Tên" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="170"/>
+                <DataGridTextColumn Header="File lời giải" Binding="{Binding Path}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Phân loại" Binding="{Binding Role, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <WrapPanel Grid.Row="2" Margin="0,8">
+            <TextBlock Text="Lời giải chuẩn" VerticalAlignment="Center"/>
+            <ComboBox x:Name="cmbReference" Width="240" Margin="8,0,0,0" DisplayMemberPath="Name"/>
+            <TextBlock Text="Phân loại lời giải chọn" VerticalAlignment="Center" Margin="18,0,0,0"/>
+            <ComboBox x:Name="cmbRole" Width="160" Margin="8,0,0,0"><ComboBoxItem Content="Ứng viên đúng"/><ComboBoxItem Content="Lời giải sai"/></ComboBox>
+            <Button Content="Gán" Click="BtnSetRole_Click" Padding="10,6" Margin="5,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <Button Content="Xóa chọn" Click="BtnRemove_Click" Padding="10,6" Margin="14,0,0,0" Style="{StaticResource OutlineButton}"/>
+            <Button Content="▶ Chạy ma trận" Click="BtnRun_Click" Padding="14,6" Margin="18,0,0,0"/>
+        </WrapPanel>
+        <DataGrid Grid.Row="3" x:Name="gridResults" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Lời giải" Binding="{Binding Name}" Width="170"/>
+                <DataGridTextColumn Header="Vai trò" Binding="{Binding Role}" Width="130"/>
+                <DataGridTextColumn Header="Khác test chuẩn" Binding="{Binding Different}" Width="125"/>
+                <DataGridTextColumn Header="Trạng thái" Binding="{Binding Status}" Width="180"/>
+                <DataGridTextColumn Header="Test phân biệt" Binding="{Binding DistinguishingTests}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <DockPanel Grid.Row="4" Margin="0,8,0,0">
+            <TextBlock x:Name="lblStatus" TextWrapping="Wrap" Style="{StaticResource HintText}" VerticalAlignment="Center"/>
+            <Button DockPanel.Dock="Right" Content="Đóng" Click="BtnClose_Click" Padding="16,7" IsCancel="True" Style="{StaticResource OutlineButton}"/>
+        </DockPanel>
+    </Grid>
+</Window>
