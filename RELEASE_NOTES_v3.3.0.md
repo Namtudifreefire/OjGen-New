@@ -31,6 +31,10 @@ OjGen 3.3.0 bổ sung công cụ để tạo, kiểm định, tái sử dụng v
 - Run profile `.ojrun.json` hỗ trợ build/run nhiều file; runner thêm C, Rust, Go, Pascal, Kotlin. Hàng đợi GUI lưu bền và cho sửa seed, output, nhóm, thứ tự để chạy lại lỗi.
 - Benchmark theo nhóm ghi median, p95, working set đỉnh và môi trường chạy.
 
+## Cập nhật giao diện
+
+- Sửa bố cục cột tạo test để phần xem trước không bị khu vực tạo test chồng lên hoặc cắt mất ở cửa sổ thấp. Cột bên phải cuộn độc lập; ô xem trước có chiều cao tối thiểu 180 px.
+
 ## Lưu ý tương thích
 
 Định dạng Kattis 2025-09 là release candidate và hiện chưa được hỗ trợ rộng. Hãy kiểm tra judge đích trước khi nhập gói. Lời giải chuẩn phải là mã nguồn; validator Kattis xuất gói cần là Python độc lập. Gói vẫn cần được rà nội dung và metadata trước khi sử dụng.
