@@ -14,7 +14,6 @@ linux-regression:
   cache:
     key:
       files:
-        - Directory.Build.props
         - src/OjGen.Cli/OjGen.Cli.csproj
         - src/OjGen.Core/OjGen.Core.csproj
     paths:
