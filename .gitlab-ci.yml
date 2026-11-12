@@ -3,21 +3,42 @@ workflow:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_COMMIT_TAG'
-    - when: never
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
 
 stages:
   - verify
   - package
+
+default:
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
 
 variables:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "true"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
   NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+  LC_ALL: "C.UTF-8"
+
+wpf-static-check:
+  stage: verify
+  image: python:3.12-slim
+  timeout: 5m
+  script:
+    - python tests/check_wpf_static.py
 
 linux-regression:
   stage: verify
   image: mcr.microsoft.com/dotnet/sdk:10.0
+  timeout: 20m
+  variables:
+    OJGEN_TEST_DIR: "$CI_PROJECT_DIR/output/ci-tests/run"
   cache:
     key:
       files:
@@ -26,53 +47,131 @@ linux-regression:
     paths:
       - .nuget/packages/
   before_script:
-    - apt-get update
-    - apt-get install --yes --no-install-recommends g++ python3 unzip
+    - apt-get update -qq
+    - apt-get install --yes --no-install-recommends g++ python3 unzip default-jre-headless
+    - g++ --version | head -n 1
+    - python3 --version
+    - java -version
+    - dotnet --version
   script:
-    - bash tests/run_tests.sh
-    - python3 tests/check_wpf_static.py
+    - mkdir -p output/ci-tests
+    - bash -o pipefail -c 'bash tests/run_tests.sh 2>&1 | tee output/ci-tests/run_tests.log'
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - output/ci-tests/
 
-windows-package:
-  stage: package
+.windows-dotnet:
   tags:
     - saas-windows-medium-amd64
+  cache:
+    key:
+      files:
+        - src/OjGen.App/OjGen.App.csproj
+        - src/OjGen.Cli/OjGen.Cli.csproj
+    paths:
+      - .nuget/packages/
+  before_script:
+    - |
+      $ErrorActionPreference = 'Stop'
+      $sdkRoot = Join-Path $env:CI_PROJECT_DIR 'output\ci-gitlab\dotnet'
+      New-Item -ItemType Directory -Force -Path $sdkRoot | Out-Null
+      $sdkList = dotnet --list-sdks 2>$null | Out-String
+      if ($sdkList -notmatch '(?m)^10\.') {
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $installer = Join-Path $env:TEMP 'dotnet-install.ps1'
+          Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installer
+          & $installer -Channel '10.0' -InstallDir $sdkRoot -NoPath
+          if ($LASTEXITCODE -ne 0) { throw 'Cài .NET SDK 10 thất bại.' }
+          $env:DOTNET_ROOT = $sdkRoot
+          $env:PATH = "$sdkRoot;$env:PATH"
+      }
+      $sdkVersion = (dotnet --version | Out-String).Trim()
+      if ($sdkVersion -notmatch '^10\.') { throw "Cần .NET SDK 10, hiện nhận $sdkVersion." }
+      Write-Host "dotnet SDK $sdkVersion"
+
+windows-build:
+  extends: .windows-dotnet
+  stage: verify
+  timeout: 30m
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: manual
+      allow_failure: true
+  script:
+    - |
+      $ErrorActionPreference = 'Stop'
+      $ciRoot = Join-Path $env:CI_PROJECT_DIR 'output\ci-gitlab'
+      New-Item -ItemType Directory -Force -Path $ciRoot | Out-Null
+
+      dotnet build OjGen.sln -c Release -nologo
+      if ($LASTEXITCODE -ne 0) { throw 'Build solution (GUI + CLI) thất bại.' }
+
+      $cli = Join-Path $env:CI_PROJECT_DIR 'src\OjGen.Cli\bin\Release\net10.0\ojgen.exe'
+      & $cli --version
+      if ($LASTEXITCODE -ne 0) { throw 'CLI --version thất bại.' }
+
+      $env:OJGEN_SELFTEST_ROOT = Join-Path $ciRoot 'selftest'
+      & $cli --selftest
+      if ($LASTEXITCODE -ne 0) { throw 'CLI --selftest thất bại trên Windows.' }
+
+      # Sinh test + ZIP thật trên Windows (kiểm tra đường dẫn, ZipService, manifest).
+      $smoke = Join-Path $ciRoot 'smoke-array'
+      & $cli --problem array --tests 5 --seed 2024 --out $smoke
+      if ($LASTEXITCODE -ne 0) { throw 'Sinh test smoke thất bại.' }
+      $inputs = @(Get-ChildItem -LiteralPath $smoke -Filter '*.inp').Count
+      if ($inputs -ne 5 -or -not (Test-Path -LiteralPath "$smoke.zip")) { throw "Smoke: có $inputs input hoặc thiếu ZIP." }
+
+      # GUI smoke: runner SaaS có thể không có desktop tương tác nên chỉ cảnh báo.
+      $gui = Join-Path $env:CI_PROJECT_DIR 'src\OjGen.App\bin\Release\net10.0-windows\OjGen.exe'
+      try {
+          & (Join-Path $env:CI_PROJECT_DIR 'tests\smoke_gui.ps1') -ExecutablePath $gui
+      } catch {
+          Write-Warning "GUI smoke test không đạt (không chặn pipeline): $($_.Exception.Message)"
+      }
+  artifacts:
+    when: always
+    expire_in: 3 days
+    paths:
+      - output/ci-gitlab/smoke-array/
+      - output/ci-gitlab/smoke-array.zip
+
+windows-package:
+  extends: .windows-dotnet
+  stage: package
+  timeout: 45m
+  interruptible: false
   needs:
     - job: linux-regression
       artifacts: false
+    - job: wpf-static-check
+      artifacts: false
+    - job: windows-build
+      artifacts: false
+      optional: true
   rules:
     - if: '$CI_COMMIT_TAG'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - when: never
+    - when: manual
+      allow_failure: true
   script:
     - |
       $ErrorActionPreference = 'Stop'
       $repoRoot = $env:CI_PROJECT_DIR
       $ciRoot = Join-Path $repoRoot 'output\ci-gitlab'
-      $sdkRoot = Join-Path $ciRoot 'dotnet'
       $publishRoot = Join-Path $ciRoot 'publish'
       $releaseRoot = Join-Path $ciRoot 'release'
-      New-Item -ItemType Directory -Force -Path $ciRoot, $sdkRoot, $publishRoot, $releaseRoot | Out-Null
-
-      $sdkList = dotnet --list-sdks 2>$null | Out-String
-      if ($sdkList -notmatch '(?m)^10\.') {
-          $installer = Join-Path $env:TEMP 'dotnet-install.ps1'
-          Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installer
-          & $installer -Channel '10.0' -InstallDir $sdkRoot -NoPath
-          if ($LASTEXITCODE -ne 0) { throw 'Cài .NET SDK 10 thất bại.' }
-      }
-      $env:DOTNET_ROOT = $sdkRoot
-      $env:PATH = "$sdkRoot;$env:PATH"
-      $sdkVersion = (dotnet --version | Out-String).Trim()
-      if ($sdkVersion -notmatch '^10\.') { throw "Cần .NET SDK 10, hiện nhận $sdkVersion." }
-
-      python tests/check_wpf_static.py
-      if ($LASTEXITCODE -ne 0) { throw 'Kiểm tra tĩnh giao diện WPF thất bại.' }
+      New-Item -ItemType Directory -Force -Path $ciRoot, $publishRoot, $releaseRoot | Out-Null
 
       [xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
       $version = [string]$buildProps.Project.PropertyGroup.Version
       if ([string]::IsNullOrWhiteSpace($version)) { throw 'Không đọc được Version trong Directory.Build.props.' }
       if ($env:CI_COMMIT_TAG -and $env:CI_COMMIT_TAG -ne "v$version") {
           throw "Tag $env:CI_COMMIT_TAG không khớp phiên bản trong Directory.Build.props (v$version)."
+      }
+      if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "RELEASE_NOTES_v$version.md"))) {
+          throw "Thiếu RELEASE_NOTES_v$version.md."
       }
 
       $guiOutput = Join-Path $publishRoot 'GUI'
@@ -96,7 +195,7 @@ windows-package:
       if ($LASTEXITCODE -ne 0 -or $cliVersion -notmatch [regex]::Escape($version)) { throw "CLI --version thất bại: $cliVersion" }
       $env:OJGEN_SELFTEST_ROOT = Join-Path $ciRoot 'selftest'
       & $cliExe --selftest
-      if ($LASTEXITCODE -ne 0) { throw 'CLI selftest thất bại.' }
+      if ($LASTEXITCODE -ne 0) { throw 'CLI selftest (bản publish) thất bại.' }
 
       $packageName = "OjGen-$version-win-x64"
       $packageRoot = Join-Path $releaseRoot $packageName
@@ -149,4 +248,3 @@ windows-package:
       - output/ci-gitlab/release/*.zip
       - output/ci-gitlab/release/*.sha256
     expire_in: 30 days
-
