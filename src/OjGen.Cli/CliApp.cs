@@ -495,7 +495,10 @@ internal static class CliApp
             }
             if (a.Kv.TryGetValue("ci-project", out string? ciProject))
             {
-                var outcome = CliProjectCiAudit.Run(ciProject, log);
+                var ciSettings = Settings.Load(a.Kv.GetValueOrDefault("settings"), out string? ciWarning);
+                if (ciWarning != null) log.Line("! " + ciWarning);
+                if (!ApplySettingsOverrides(a, ciSettings, out string ciError)) { Err("LỖI: " + ciError); return 2; }
+                var outcome = CliProjectCiAudit.Run(ciProject, ciSettings, log);
                 if (outcome.Error.Length > 0) Err("LỖI CI: " + outcome.Error);
                 else Console.Out.WriteLine(outcome.Text);
                 if (a.Kv.TryGetValue("json-report", out string? reportPath) && !WriteJsonReport(reportPath, outcome.Json, out string? jsonError))

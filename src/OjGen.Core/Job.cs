@@ -150,6 +150,7 @@ public static class Job
     /// <summary>Ghi nhớ lời giải gần nhất vào file cấu hình (không lưu các tùy chọn CLI tạm thời).</summary>
     private static void RememberSolution(Settings st, string path, string problemId)
     {
+        if (!st.PersistRecentSolution) return;
         try
         {
             var disk = Settings.Load(st.SourcePath, out _);
@@ -438,7 +439,7 @@ public static class Job
         SetStatus status = SetStatus.InputOnly;
         OutputReport rep = new();
         string compileErr = "";
-        string solutionShown = job.SolutionPath.Length == 0 ? "(không dùng)" : job.SolutionPath;
+        string solutionShown = job.SolutionPath.Length == 0 ? "(không dùng)" : Path.GetFileName(job.SolutionPath);
         bool cancelled = false;
         if (job.SolutionPath.Length == 0)
         {
@@ -465,8 +466,6 @@ public static class Job
                     string outputFingerprint = job.ResumeGeneration
                         ? SolutionRunner.CreateResumeFingerprint(job.SolutionPath, st)
                         : "";
-                    if (job.ResumeGeneration && ps.Compiled && ps.Argv.Count > 0 && File.Exists(ps.Argv[0]))
-                        outputFingerprint += ":" + Sha256File(ps.Argv[0]);
                     rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct,
                         resume: job.ResumeGeneration, resumeFingerprint: outputFingerprint, solutionWorkingDirectory: ps.WorkingDirectory);
                 }
@@ -477,7 +476,13 @@ public static class Job
                     if (!manual.IsSample || manual.ExpectedOutput.Trim().Length == 0) continue;
                     string outPath = Path.ChangeExtension(g.Inputs[i], ".out");
                     if (!File.Exists(outPath)) continue;
-                    string actual = FileManager.ReadText(outPath);
+                    if (!FileManager.TryReadText(outPath, out string actual, out string? readError))
+                    {
+                        string warning = $"Sample '{manual.Name}': không đọc được output lời giải chuẩn ({readError}).";
+                        coverage.Suggestions.Add(warning);
+                        log.Line("  ! " + warning);
+                        continue;
+                    }
                     if (NormalizeOutputTokens(actual) != NormalizeOutputTokens(manual.ExpectedOutput))
                     {
                         string warning = $"Sample '{manual.Name}': output nhập tay khác output của lời giải chuẩn.";
@@ -641,6 +646,13 @@ public static class Job
             return result;
         }
         result.InputCount = inputs.Count;
+        if (File.Exists(Path.Combine(dir, FileManager.ChecksumFile)) && FileManager.VerifyTestChecksumManifest(dir, out _) is { } integrityError)
+        {
+            result.ExitCode = 2;
+            result.Error = "Không thể tạo lại output vì kiểm tra SHA-256 thất bại: " + integrityError;
+            log.Line("LỖI: " + result.Error);
+            return result;
+        }
         // Output and info will change, so the previous audit cannot describe this set.
         // Preserve it outside the ZIP instead of silently deleting the user's reports.
         var auditFiles = new[] { "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt" }
@@ -690,10 +702,18 @@ public static class Job
             if (rep.Failures.Count > 0) PrintFailures(rep, log);
             status = rep.Failures.Count == 0 && !rep.Cancelled ? SetStatus.Complete : SetStatus.Incomplete;
         }
-        string old = FileManager.ReadText(Path.Combine(dir, FileManager.InfoFile));
+        string infoPath = Path.Combine(dir, FileManager.InfoFile);
+        string old = "";
+        if (File.Exists(infoPath) && !FileManager.TryReadText(infoPath, out old, out string? infoReadError))
+        {
+            result.ExitCode = 2;
+            result.Error = infoReadError;
+            log.Line("LỖI: " + infoReadError);
+            return result;
+        }
         var info = new StringBuilder();
         info.Append(old).Append("\n--- Tạo lại output lúc ").Append(NowStr()).Append(" ---\n");
-        info.Append("Lời giải chuẩn: ").Append(solution).Append('\n');
+        info.Append("Lời giải chuẩn: ").Append(Path.GetFileName(solution)).Append('\n');
         info.Append("Trạng thái    : ").Append(StatusLine(status)).Append('\n');
         if (note.Length > 0) info.Append(note).Append('\n');
         if (rep.Failures.Count > 0) info.Append("  Test lỗi:\n").Append(FailureSummary(rep));

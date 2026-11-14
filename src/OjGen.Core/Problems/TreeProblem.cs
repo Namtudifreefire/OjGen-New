@@ -76,13 +76,24 @@ public sealed class TreeProblem : Problem
         }
         else
         {
+            var labels = Enumerable.Range(1, n).ToList();
+            rng.Shuffle(labels);
+            var edges = new List<(int U, int V, long Weight)>();
             for (int v = 2; v <= n; v++)
             {
-                Util.AppendLL(sb, parent[v]); sb.Append(' '); Util.AppendLL(sb, v);
+                int u = labels[parent[v] - 1], child = labels[v - 1];
+                if (rng.Range(0, 1) == 1) (u, child) = (child, u);
+                long weight = c.B("weighted") ? rng.Range(c.I("minW"), c.I("maxW")) : 0;
+                edges.Add((u, child, weight));
+            }
+            rng.Shuffle(edges);
+            foreach (var edge in edges)
+            {
+                Util.AppendLL(sb, edge.U); sb.Append(' '); Util.AppendLL(sb, edge.V);
                 if (c.B("weighted"))
                 {
                     sb.Append(' ');
-                    Util.AppendLL(sb, rng.Range(c.I("minW"), c.I("maxW")));
+                    Util.AppendLL(sb, edge.Weight);
                 }
                 sb.Append('\n');
             }

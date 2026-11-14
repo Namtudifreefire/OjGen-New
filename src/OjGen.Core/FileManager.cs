@@ -10,7 +10,7 @@ public static class FileManager
     public const string ChecksumFile = "SHA256SUMS.txt";
     private static readonly string[] GeneratedSidecarNames =
     {
-        InfoFile, ChecksumFile, ".ojgen_checkpoint.json", ".ojgen_output_checkpoint.json",
+        InfoFile, ChecksumFile, "TEST_INVENTORY.csv", ".ojgen_checkpoint.json", ".ojgen_output_checkpoint.json",
         "ojgen_provenance.json", "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt",
         "problem.ojdraft.json",
     };
@@ -52,8 +52,14 @@ public static class FileManager
 
     public static string ReadText(string path)
     {
-        try { return Util.Utf8.GetString(File.ReadAllBytes(path)); }
-        catch (Exception) { return ""; }
+        return TryReadText(path, out string text, out _) ? text : "";
+    }
+
+    public static bool TryReadText(string path, out string text, out string? err)
+    {
+        text = ""; err = null;
+        try { text = Util.Utf8.GetString(File.ReadAllBytes(path)); return true; }
+        catch (Exception ex) { err = "Không đọc được file " + path + ": " + ex.Message; return false; }
     }
 
     // ------------------------------------------------------------ tên test

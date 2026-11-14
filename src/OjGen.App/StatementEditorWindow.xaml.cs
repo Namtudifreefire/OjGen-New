@@ -1,5 +1,7 @@
 using System.Text;
 using System.IO;
+using System.Text.Json;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -16,6 +18,7 @@ public partial class StatementEditorWindow : Window
     // InitializeComponent raises TextChanged while building some TextBoxes; keep handlers inert until
     // Document and all controls have been populated.
     private bool _loading = true;
+    private string _savedSnapshot = "";
 
     internal ProblemAuthoringDocument Document { get; private set; }
     internal ProblemAuthoringDocument? Result { get; private set; }
@@ -46,6 +49,7 @@ public partial class StatementEditorWindow : Window
         txtConstraints.Text = Document.Constraints;
         txtExamples.Text = Document.Examples;
         _loading = false;
+        _savedSnapshot = JsonSerializer.Serialize(Document);
 
         _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
         _previewTimer.Tick += (_, _) =>
@@ -140,7 +144,7 @@ public partial class StatementEditorWindow : Window
         UpdateDocument();
         var dialog = new SaveFileDialog { Title = "Lưu bản nháp đề", Filter = "OjGen draft (*.ojdraft.json)|*.ojdraft.json|JSON (*.json)|*.json", FileName = (Document.Code.Length == 0 ? "problem" : Document.Code) + ".ojdraft.json" };
         if (dialog.ShowDialog(this) != true) return;
-        try { Document.Save(dialog.FileName); lblCheckStatus.Text = "Đã lưu bản nháp: " + dialog.FileName; }
+        try { Document.Save(dialog.FileName); _savedSnapshot = JsonSerializer.Serialize(Document); lblCheckStatus.Text = "Đã lưu bản nháp: " + dialog.FileName; }
         catch (Exception ex) { MessageBox.Show(this, "Không lưu được bản nháp: " + ex.Message, "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 
@@ -196,4 +200,16 @@ public partial class StatementEditorWindow : Window
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (Result == null && !_loading)
+        {
+            UpdateDocument();
+            if (JsonSerializer.Serialize(Document) != _savedSnapshot &&
+                MessageBox.Show(this, "Nội dung chưa được lưu hoặc áp dụng. Đóng và bỏ thay đổi?", "Bản đề chưa lưu", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+                e.Cancel = true;
+        }
+        base.OnClosing(e);
+    }
 }

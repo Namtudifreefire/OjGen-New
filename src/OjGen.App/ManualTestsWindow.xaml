@@ -72,10 +72,17 @@
                         <Button Grid.Column="2" Content="Mở .inp…" Click="BtnOpenInput_Click" Margin="6,0,0,0" Style="{StaticResource OutlineButton}" />
                     </Grid>
                     <TextBox Grid.Row="2" x:Name="txtInput" Style="{StaticResource MonoTextBox}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
-                    <DockPanel Grid.Row="3" Margin="0,8,0,0">
+                    <Grid Grid.Row="3" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <DockPanel Grid.Column="0" Margin="0,0,6,0">
                         <TextBlock DockPanel.Dock="Top" Text="Output mẫu mong đợi (tùy chọn)" Style="{StaticResource FieldLabel}" />
                         <TextBox x:Name="txtOutput" Style="{StaticResource MonoTextBox}" AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" ToolTip="Có thể điền output mẫu; OjGen sẽ đối chiếu với lời giải chuẩn khi tạo test." />
-                    </DockPanel>
+                        </DockPanel>
+                        <DockPanel Grid.Column="1">
+                            <TextBlock DockPanel.Dock="Top" Text="Output đã sinh (chỉ đọc)" Style="{StaticResource FieldLabel}" />
+                            <TextBox x:Name="txtGeneratedOutput" Style="{StaticResource MonoTextBox}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+                        </DockPanel>
+                    </Grid>
                     <TextBlock Grid.Row="4" x:Name="lblValidation" TextWrapping="Wrap" Margin="0,8,0,0" />
                     <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
                         <Button Content="Kiểm tra input" Click="BtnValidate_Click" Padding="14,7" Style="{StaticResource OutlineButton}" />

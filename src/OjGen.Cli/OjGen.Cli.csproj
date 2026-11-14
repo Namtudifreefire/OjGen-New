@@ -8,5 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OjGen.Core\OjGen.Core.csproj" />
+    <Compile Include="..\OjGen.App\ProblemAuthoringDocument.cs" Link="Shared\ProblemAuthoringDocument.cs" />
+    <Compile Include="..\OjGen.App\StatementConsistencyChecker.cs" Link="Shared\StatementConsistencyChecker.cs" />
+    <Compile Include="..\OjGen.App\ConstraintConsistencyChecker.cs" Link="Shared\ConstraintConsistencyChecker.cs" />
   </ItemGroup>
 </Project>

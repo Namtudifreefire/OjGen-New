@@ -60,6 +60,8 @@ public static partial class TestInventoryService
     public static void Rename(string directory, IReadOnlyList<TestInventoryRow> rows, string prefix)
     {
         if (rows.Count == 0) throw new InvalidOperationException("Chọn ít nhất một test để đổi tên.");
+        if (File.Exists(Path.Combine(directory, FileManager.ChecksumFile)) && FileManager.VerifyTestChecksumManifest(directory, out _) is { } integrityError)
+            throw new InvalidDataException("Không thể đổi tên vì kiểm tra SHA-256 thất bại: " + integrityError);
         string safePrefix = SafeStem(prefix);
         if (safePrefix.Length == 0) throw new InvalidDataException("Tiền tố tên file không hợp lệ.");
         var allInputs = FileManager.ListFilesWithExt(directory, ".inp");
@@ -69,9 +71,11 @@ public static partial class TestInventoryService
         string provenancePath = Path.Combine(directory, "ojgen_provenance.json");
         string checksumPath = Path.Combine(directory, FileManager.ChecksumFile);
         string inventoryPath = Path.Combine(directory, "TEST_INVENTORY.csv");
+        string infoPath = Path.Combine(directory, FileManager.InfoFile);
         byte[]? provenanceBackup = File.Exists(provenancePath) ? File.ReadAllBytes(provenancePath) : null;
         byte[]? checksumBackup = File.Exists(checksumPath) ? File.ReadAllBytes(checksumPath) : null;
         byte[]? inventoryBackup = File.Exists(inventoryPath) ? File.ReadAllBytes(inventoryPath) : null;
+        byte[]? infoBackup = File.Exists(infoPath) ? File.ReadAllBytes(infoPath) : null;
         int width = FileManager.TestNumberWidth(ordered.Count);
         var targets = ordered.Select((path, i) => Path.Combine(directory, safePrefix + (i + 1).ToString("D" + width, CultureInfo.InvariantCulture) + ".inp")).ToList();
         foreach (string target in targets)
@@ -100,6 +104,7 @@ public static partial class TestInventoryService
             }
             UpdateMetadata(directory, ordered.Select((path, i) => (Name: Path.GetFileNameWithoutExtension(path), NewName: Path.GetFileNameWithoutExtension(targets[i])))
                 .ToDictionary(item => item.Name, item => item.NewName, StringComparer.OrdinalIgnoreCase));
+            UpdateInfoTestNames(infoPath, ordered.Select((path, i) => (Old: Path.GetFileNameWithoutExtension(path), New: Path.GetFileNameWithoutExtension(targets[i]))));
             if (!FileManager.WriteTestChecksumManifest(directory, out _, out string? checksumError))
                 throw new IOException(checksumError ?? "Không thể cập nhật manifest SHA-256.");
             WriteCsv(directory);
@@ -116,8 +121,21 @@ public static partial class TestInventoryService
             RestoreFile(provenancePath, provenanceBackup);
             RestoreFile(checksumPath, checksumBackup);
             RestoreFile(inventoryPath, inventoryBackup);
+            RestoreFile(infoPath, infoBackup);
             throw;
         }
+    }
+
+    private static void UpdateInfoTestNames(string infoPath, IEnumerable<(string Old, string New)> renames)
+    {
+        if (!File.Exists(infoPath)) return;
+        if (!FileManager.TryReadText(infoPath, out string info, out string? error)) throw new IOException(error);
+        foreach (var rename in renames)
+        {
+            info = info.Replace(rename.Old + ".inp", rename.New + ".inp", StringComparison.OrdinalIgnoreCase)
+                       .Replace(rename.Old + ".out", rename.New + ".out", StringComparison.OrdinalIgnoreCase);
+        }
+        AtomicFile.WriteAllText(infoPath, info, new UTF8Encoding(false));
     }
 
     public static void AssignGroup(string directory, IReadOnlyList<TestInventoryRow> rows, string group, IReadOnlyList<string> tags)

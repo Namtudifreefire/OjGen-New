@@ -90,48 +90,27 @@ internal static class CliReleaseAudit
     /// Cấu hình áp dụng cho test thứ testIndex (đã sắp xếp theo tên): test nhập tay đứng trước,
     /// sau đó mới tới các nhóm sinh tự động. Phải trừ offset test tay (giống ReleaseAuditService của GUI).
     /// </summary>
-    private static void AuditStatement(string path, Problem problem, CliAuditReport report)
+    private static void AuditStatement(string path, CliAuditOptions options, CliAuditReport report)
     {
-        if (path.Trim().Length == 0)
-        {
-            report.Add(CliAuditLevel.Warning, "Nội dung đề", "Chưa chọn bản nháp .ojdraft.json; phần mô tả đề chưa được kiểm định.");
-            return;
-        }
-        if (!File.Exists(path))
-        {
-            report.Add(CliAuditLevel.Error, "Nội dung đề", "Không tìm thấy bản nháp: " + path);
-            return;
-        }
+        if (path.Trim().Length == 0) { report.Add(CliAuditLevel.Warning, "Nội dung đề", "Chưa chọn bản nháp .ojdraft.json; phần mô tả đề chưa được kiểm định."); return; }
         try
         {
-            var doc = JsonSerializer.Deserialize<CliStatementDraft>(File.ReadAllText(path),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var doc = JsonSerializer.Deserialize<OjGen.Gui.ProblemAuthoringDocument>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (doc == null || doc.Version != 1) throw new InvalidDataException("Phiên bản bản nháp không được hỗ trợ.");
-            var errors = new List<string>();
-            var warnings = new List<string>();
-            if (!string.Equals(doc.ProblemId, problem.Id, StringComparison.OrdinalIgnoreCase)) errors.Add("Bản đề đang gắn với khuôn input khác.");
-            if (doc.Name.Trim().Length == 0) errors.Add("Tên bài đang để trống.");
-            if (doc.Code.Trim().Length == 0) errors.Add("Mã bài đang để trống.");
-            if (doc.Code.Length > 64 || doc.Code.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '-' or '_')))
-                errors.Add("Mã bài chỉ được gồm chữ không dấu, số, dấu gạch ngang hoặc gạch dưới (tối đa 64 ký tự).");
-            if (doc.TimeLimitMs < 1) errors.Add("Thời gian phải lớn hơn 0 ms.");
-            if (doc.MemoryLimitMb < 1) errors.Add("Bộ nhớ phải lớn hơn 0 MB.");
-            if (doc.Description.Trim().Length == 0 || doc.Description.Trim().Equals("Mô tả ý tưởng và yêu cầu của bài toán tại đây.", StringComparison.OrdinalIgnoreCase))
-                errors.Add("Phần đề bài chưa được điền.");
-            if (doc.Input.Trim().Length == 0) errors.Add("Chưa mô tả input.");
-            if (doc.Output.Trim().Length == 0 || doc.Output.Trim().Equals("Mô tả định dạng output tại đây.", StringComparison.OrdinalIgnoreCase))
-                errors.Add("Chưa mô tả output.");
-            if (doc.Constraints.Trim().Length == 0 || doc.Constraints.Trim().Equals("Điền các giới hạn chính thức của đề bài tại đây.", StringComparison.OrdinalIgnoreCase))
-                errors.Add("Chưa ghi giới hạn chính thức.");
-            if (doc.Input.Trim() != problem.FormatDescription.TrimEnd()) warnings.Add("Mô tả input khác cấu trúc khuôn generator; cần đối chiếu thủ công.");
-            if (doc.Examples.Trim().Length == 0 || doc.Examples.Trim().StartsWith("<!-- Dùng nút Chèn sample", StringComparison.OrdinalIgnoreCase))
-                warnings.Add("Phần Ví dụ chưa có sample được chèn.");
-            foreach (string error in errors) report.Add(CliAuditLevel.Error, "Nội dung đề", error);
-            foreach (string warning in warnings) report.Add(CliAuditLevel.Warning, "Nội dung đề", warning);
-            if (errors.Count == 0 && warnings.Count == 0) report.Add(CliAuditLevel.Pass, "Nội dung đề", "Các mục bắt buộc đã có và định dạng input khớp khuôn.");
+            var spec = options.GeneratedSpec;
+            var samples = spec?.ManualTests.Where(test => test.IsSample).ToList() ?? new List<ManualTestSpec>();
+            var check = OjGen.Gui.StatementConsistencyChecker.Check(doc, options.Problem, options.Config, samples);
+            foreach (string error in check.Errors) report.Add(CliAuditLevel.Error, "Nội dung đề", error);
+            foreach (string warning in check.Warnings) report.Add(warning.StartsWith("Mô tả input đã khác cấu trúc", StringComparison.Ordinal) ? CliAuditLevel.Info : CliAuditLevel.Warning, "Nội dung đề", warning);
+            if (check.Errors.Count == 0 && check.Warnings.Count == 0) report.Add(CliAuditLevel.Pass, "Nội dung đề", "Các mục bắt buộc và sample đã được kiểm tra.");
+            var configs = spec == null ? new List<Config>() : spec.Groups.Select(group => group.Cfg).Concat(spec.ManualTests.Select(test => test.Cfg)).ToList();
+            var bounds = OjGen.Gui.ConstraintConsistencyChecker.Check(doc.Constraints, options.Problem, options.Config, configs);
+            foreach (string error in bounds.Errors) report.Add(CliAuditLevel.Error, "Giới hạn đề và cấu hình", error);
+            foreach (string warning in bounds.Warnings) report.Add(CliAuditLevel.Warning, "Giới hạn đề và cấu hình", warning);
         }
         catch (Exception ex) { report.Add(CliAuditLevel.Error, "Nội dung đề", "Không đọc/kiểm tra được bản nháp: " + ex.Message); }
     }
+
 
     private static void AuditReproducibility(IReadOnlyList<string> originalInputs, JobSpec? spec,
         Settings settings, IJobLog log, CliAuditReport report, CancellationToken ct)
@@ -434,7 +413,7 @@ internal static class CliReleaseAudit
         var report = new CliAuditReport();
         try
         {
-            AuditStatement(options.StatementPath, options.Problem, report);
+            AuditStatement(options.StatementPath, options, report);
             if (!Directory.Exists(options.TestDirectory))
             {
                 report.Add(CliAuditLevel.Error, "Bộ test", "Không tìm thấy thư mục: " + options.TestDirectory);
@@ -463,7 +442,11 @@ internal static class CliReleaseAudit
                     {
                         if (ct.IsCancellationRequested) { report.Cancelled = true; break; }
                         string input = inputs[i];
-                        string text = FileManager.ReadText(input);
+                        if (!FileManager.TryReadText(input, out string text, out string? readError))
+                        {
+                            report.Add(CliAuditLevel.Error, "Không đọc được input", Path.GetFileName(input) + ": " + readError);
+                            continue;
+                        }
                         if (options.Problem.ValidateInput(text, ReleaseAuditCommon.ConfigFor(options.Config, options.GeneratedSpec, i)) is { } error)
                         {
                             invalid++;
@@ -504,7 +487,8 @@ internal static class CliReleaseAudit
                     if (coverage.Suggestions.Count == 0) report.Add(CliAuditLevel.Pass, "Độ phủ test (heuristic + đo input)", "Không thấy thiếu chế độ rõ ràng từ tên nhóm, cấu hình và kích thước đã đo.");
                     else
                     {
-                        foreach (string suggestion in coverage.Suggestions.Take(6)) report.Add(CliAuditLevel.Warning, "Độ phủ test (heuristic + đo input)", suggestion);
+                        foreach (string suggestion in coverage.Suggestions)
+                            report.Add(suggestion.StartsWith("Thiếu nhóm test có nhãn độ phủ bắt buộc", StringComparison.Ordinal) ? CliAuditLevel.Warning : CliAuditLevel.Info, "Độ phủ test (heuristic + đo input)", suggestion);
                         report.Add(CliAuditLevel.Info, "Độ phủ test", "Các kết luận cần được so với trường hợp biên của đề.");
                     }
 

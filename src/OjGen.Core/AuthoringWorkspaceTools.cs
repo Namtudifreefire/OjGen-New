@@ -221,7 +221,10 @@ public static class ProblemLibrary
         string[] patterns = { "*.ojproject", "*.ojdraft.json", "problem.ojproblem.json" };
         foreach (string pattern in patterns)
         {
-            foreach (string path in Directory.EnumerateFiles(fullRoot, pattern, SearchOption.AllDirectories))
+            IEnumerable<string> candidates;
+            try { candidates = Directory.EnumerateFiles(fullRoot, pattern, SearchOption.AllDirectories).ToArray(); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException) { continue; }
+            foreach (string path in candidates)
             {
                 if (++scanned > maxFiles) throw new InvalidDataException($"Thư viện vượt quá giới hạn {maxFiles} file.");
                 try
@@ -242,7 +245,7 @@ public static class ProblemLibrary
                     bool matchesTag = string.IsNullOrWhiteSpace(tagFilter) || entry.Tags.Contains(tagFilter, StringComparer.OrdinalIgnoreCase);
                     if (matchesQuery && matchesTag) result.Add(entry);
                 }
-                catch (JsonException) { }
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException or UnauthorizedAccessException) { }
             }
         }
         return result.OrderBy(item => item.Code, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToList();
@@ -344,7 +347,7 @@ public static class ProblemVersionComparer
     private static Dictionary<string, string> Files(string path)
     {
         string full = Path.GetFullPath(path);
-        if (File.Exists(full)) return new(StringComparer.OrdinalIgnoreCase) { [Path.GetFileName(full)] = full };
+        if (File.Exists(full)) return new(StringComparer.OrdinalIgnoreCase) { ["__single_document__"] = full };
         if (!Directory.Exists(full)) throw new FileNotFoundException("Không tìm thấy phiên bản hoặc thư mục.", full);
         return Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories)
             .ToDictionary(file => Path.GetRelativePath(full, file).Replace(Path.DirectorySeparatorChar, '/'), file => file, StringComparer.OrdinalIgnoreCase);
@@ -488,6 +491,7 @@ public static class TranslationManager
     private static Dictionary<string, string> ReadStatement(string path)
     {
         using var json = JsonDocument.Parse(File.ReadAllText(path));
+        if (json.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Statement phải là một JSON object.");
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string field in RequiredFields.Concat(new[] { "TimeLimitMs", "MemoryLimitMb" }))
             if (json.RootElement.TryGetProperty(field, out var value)) values[field] = value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : value.ToString();

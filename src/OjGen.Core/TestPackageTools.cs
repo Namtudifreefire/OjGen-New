@@ -125,13 +125,13 @@ public static class TestPackageTools
         if (inputs.Count == 0) throw new InvalidDataException("Nguồn không có input .inp hoặc .in.");
         if (inputs.Count > MaxTests) throw new InvalidDataException($"Nguồn có quá {MaxTests} input.");
         long totalBytes = 0;
+        using var sourceZip = File.Exists(source) && source.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ZipFile.OpenRead(source) : null;
         foreach (var pair in items)
         {
             if (pair.Value.StartsWith("zip:", StringComparison.Ordinal))
             {
                 string[] parts = pair.Value[4..].Split('|', 2);
-                using var archive = ZipFile.OpenRead(parts[0]);
-                var entry = archive.GetEntry(parts[1]) ?? throw new InvalidDataException("Không đọc được mục ZIP: " + parts[1]);
+                var entry = sourceZip?.GetEntry(parts[1]) ?? throw new InvalidDataException("Không đọc được mục ZIP: " + parts[1]);
                 totalBytes = checked(totalBytes + entry.Length);
             }
             else totalBytes = checked(totalBytes + new FileInfo(pair.Value).Length);
@@ -149,17 +149,16 @@ public static class TestPackageTools
         var warnings = new List<string>();
         try
         {
-            using var zip = File.Exists(source) && source.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ZipFile.OpenRead(source) : null;
             for (int inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
             {
                 var input = inputs[inputIndex];
                 int index = inputIndex + 1;
                 string name = FileManager.TestName(prefix, index, width);
-                CopyItem(input.Value, Path.Combine(staging, name + ".inp"), zip);
+                CopyItem(input.Value, Path.Combine(staging, name + ".inp"), sourceZip);
                 string outKey = input.Key[..^4] + ".out";
                 if (items.TryGetValue(outKey, out string? output))
                 {
-                    CopyItem(output, Path.Combine(staging, name + ".out"), zip);
+                    CopyItem(output, Path.Combine(staging, name + ".out"), sourceZip);
                     outCount++;
                 }
                 else warnings.Add($"Test nguồn '{Stem(input.Key)}' chưa có output .out/.ans.");
@@ -217,11 +216,13 @@ public static class TestPackageTools
         var removed = new List<string>();
         var changed = new List<string>();
         int identical = 0;
+        using var zipA = File.Exists(left) && left.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ZipFile.OpenRead(left) : null;
+        using var zipB = File.Exists(right) && right.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ZipFile.OpenRead(right) : null;
         foreach (string key in a.Keys.Union(b.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
         {
             if (!a.TryGetValue(key, out string? first)) { added.Add(key); continue; }
             if (!b.TryGetValue(key, out string? second)) { removed.Add(key); continue; }
-            string h1 = HashItem(first), h2 = HashItem(second);
+            string h1 = HashItem(first, zipA), h2 = HashItem(second, zipB);
             if (string.Equals(h1, h2, StringComparison.OrdinalIgnoreCase)) identical++;
             else changed.Add(key);
         }
@@ -314,12 +315,11 @@ public static class TestPackageTools
         input.CopyTo(output);
     }
 
-    private static string HashItem(string path)
+    private static string HashItem(string path, ZipArchive? archive)
     {
         if (!path.StartsWith("zip:", StringComparison.Ordinal)) return HashFile(path);
         string[] parts = path[4..].Split('|', 2);
-        using var archive = ZipFile.OpenRead(parts[0]);
-        using var stream = archive.GetEntry(parts[1])?.Open() ?? throw new InvalidDataException("Thiếu mục ZIP: " + parts[1]);
+        using var stream = archive?.GetEntry(parts[1])?.Open() ?? throw new InvalidDataException("Thiếu mục ZIP: " + parts[1]);
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 }

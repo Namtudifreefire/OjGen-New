@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace OjGen.Core;
 
 public sealed class CoverageReport
@@ -120,7 +122,7 @@ public static class CoverageAnalyzer
                             reader.ReadLine(); // payload line for this subtest
                         }
                     }
-                    else if (problem.Id is "graph" or "grid" or "queries" or "prefix_sum_range" or "prefix_subsequence_range" or "tdc_prefix_sum")
+                    else if (problem.Id is "graph" or "grid" or "queries" or "prefix_sum_range" or "prefix_subsequence_range")
                     {
                         Add("n", a);
                         if (problem.Id == "prefix_sum_range")
@@ -129,19 +131,14 @@ public static class CoverageAnalyzer
                             if (TryNumber((reader.ReadLine() ?? "").Trim(), out long q)) Add("q", q);
                         }
                         else if (first.Length > 1 && TryNumber(first[1], out long b))
-                            Add(problem.Id is "queries" or "prefix_sum_range" or "prefix_subsequence_range" or "tdc_prefix_sum" ? "q" : "m", b);
+                            Add(problem.Id is "queries" or "prefix_sum_range" or "prefix_subsequence_range" ? "q" : "m", b);
                     }
                     else if (problem.Id == "matrix")
                     {
                         Add("n", a);
                         if (cfg.I("layout") == 0 && first.Length > 1 && TryNumber(first[1], out long b)) Add("m", b);
                     }
-                    else if (problem.Id is "array" or "tree" or "pair_list") Add("n", a);
-                    else if (first.Length > 1 && TryNumber(first[1], out long b))
-                    {
-                        Add("n", a);
-                        Add("m", b);
-                    }
+                    else if (problem.Id is "array" or "tree" or "pairs" || (problem.Id == "custom" && cfg.B("header"))) Add("n", a);
                 }
             }
             catch (Exception) { }
@@ -249,7 +246,7 @@ public static class CoverageAnalyzer
             long actualLow = observed.Min(), actualHigh = observed.Max();
             decimal span = allowedHigh == allowedLow ? (actualLow == allowedLow ? 100m : 0m)
                 : Math.Clamp(((decimal)actualHigh - actualLow) / ((decimal)allowedHigh - allowedLow) * 100m, 0m, 100m);
-            report.Observations.Add($"Phạm vi {dimension}: cấu hình nhóm [{Util.LL(allowedLow)}, {Util.LL(allowedHigh)}], đo [{Util.LL(actualLow)}, {Util.LL(actualHigh)}] từ {observed.Count} input; phủ khoảng số học khoảng {span:0.#}%.");
+            report.Observations.Add($"Phạm vi {dimension}: cấu hình nhóm [{Util.LL(allowedLow)}, {Util.LL(allowedHigh)}], đo [{Util.LL(actualLow)}, {Util.LL(actualHigh)}] từ {observed.Count} input; phủ khoảng số học khoảng {span.ToString("0.#", CultureInfo.InvariantCulture)}%.");
             if (actualLow > allowedLow && report.Suggestions.Count < 12)
                 report.Suggestions.Add($"Biên thấp {lowParam.DisplayLabel} chưa được chạm: hồ sơ cho phép {Util.LL(allowedLow)}, input nhỏ nhất là {Util.LL(actualLow)}. Thêm test cố định tại cận thấp.");
             if (actualHigh < allowedHigh && report.Suggestions.Count < 12)

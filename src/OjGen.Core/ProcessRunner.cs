@@ -204,7 +204,11 @@ public static class ProcessRunner
             if (wrapped)
             {
                 string script = "ulimit -s 262144 2>/dev/null || ulimit -s unlimited 2>/dev/null || ulimit -s \"$(ulimit -H -s)\" 2>/dev/null; ";
-                if (lim.MemoryBytes > 0)
+                string runtime = Path.GetFileNameWithoutExtension(argv[0]);
+                bool managedRuntime = runtime.Equals("java", StringComparison.OrdinalIgnoreCase) || runtime.Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+                // ulimit -v includes a managed runtime's reserved address space and makes Java/.NET
+                // fail before user code runs. Keep the portable timeout/output limits for those runtimes.
+                if (lim.MemoryBytes > 0 && !managedRuntime)
                     script += "ulimit -v " + Util.LL(lim.MemoryBytes / 1024 + 1) + " 2>/dev/null; ";
                 script += "exec \"$@\"";
                 psi.FileName = "/bin/sh";

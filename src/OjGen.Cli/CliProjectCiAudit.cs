@@ -83,7 +83,7 @@ internal static class CliProjectCiAudit
         return result;
     }
 
-    public static CiProjectAuditOutcome Run(string projectPath, IJobLog log)
+    public static CiProjectAuditOutcome Run(string projectPath, Settings settings, IJobLog log)
     {
         string fullProject = Path.GetFullPath(projectPath);
         if (!File.Exists(fullProject)) return new(2, "", new { exitCode = 2, passed = false }, "Không tìm thấy project: " + fullProject);
@@ -170,7 +170,6 @@ internal static class CliProjectCiAudit
                 RequiredCoverageTags = requiredTags,
                 ManualTests = manualTests,
             };
-            Settings settings = Settings.Load(null, out _);
             var options = new CliAuditOptions
             {
                 Problem = problem,

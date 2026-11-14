@@ -325,9 +325,9 @@ public static class DifferentialTester
         {
             if (problem.ValidateInput(candidateInput, config) != null) return false;
             if (!FileManager.WriteFile(inputPath, candidateInput, out _)) return false;
-            RunResult reference = ProcessRunner.Run(referenceArgv, inputPath, refOut, refErr, referenceCwd, limits, ct);
+            RunResult reference = ProcessRunner.Run(referenceArgv, inputPath, refOut, refErr, referenceCwd, limits, ct, unixLimits: true);
             if (reference.Status != RunStatus.Ok || ct.IsCancellationRequested) return false;
-            RunResult candidate = ProcessRunner.Run(candidateArgv, inputPath, candidateOut, candidateErr, candidateCwd, limits, ct);
+            RunResult candidate = ProcessRunner.Run(candidateArgv, inputPath, candidateOut, candidateErr, candidateCwd, limits, ct, unixLimits: true);
             if (candidate.Status != RunStatus.Ok) return false;
             return !string.Equals(Normalize(FileManager.ReadText(refOut), ignoreWhitespace),
                 Normalize(FileManager.ReadText(candidateOut), ignoreWhitespace), StringComparison.Ordinal);

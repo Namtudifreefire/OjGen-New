@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     private List<string> _requiredCoverageTags = new();
     private readonly ObservableCollection<QueuedJobEntry> _jobQueue = new();
     private readonly string _queueStatePath = JobQueuePersistence.DefaultPath;
+    private bool _queueRestoreFailed;
     private readonly DispatcherTimer _projectAutosaveTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private string _activeProjectPath = "";
     private string _projectAutosavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -1179,10 +1180,13 @@ public partial class MainWindow : Window
             job.OutDir = dir;
             return Job.Run(job, st, log, token);
         });
-        _lastGeneratedResult = res;
-        _lastGeneratedSpec = CloneJobSpec(job);
+        if (res is { ExitCode: 0, Cancelled: false })
+        {
+            _lastGeneratedResult = res;
+            _lastGeneratedSpec = CloneJobSpec(job);
+        }
         ShowResult(res, "Tạo bộ test");
-        if (res != null && job.SolutionPath.Length > 0 && res.ExitCode != 2)
+        if (res is { ExitCode: 0, Cancelled: false } && job.SolutionPath.Length > 0)
         {
             UpdateSolutionMemory(job);
             int width = FileManager.TestNumberWidth(job.TestCount);
@@ -1220,6 +1224,7 @@ public partial class MainWindow : Window
 
     private void PersistQueue()
     {
+        if (_queueRestoreFailed) return;
         try
         {
             if (_jobQueue.Count == 0)
@@ -1240,7 +1245,12 @@ public partial class MainWindow : Window
             if (_jobQueue.Count > 0) _log.Line($"Đã khôi phục {_jobQueue.Count} mục trong hàng đợi.");
             RefreshQueueMenu();
         }
-        catch (Exception ex) { _log.Line("! Không khôi phục được hàng đợi đã lưu: " + ex.Message); }
+        catch (Exception ex)
+        {
+            _queueRestoreFailed = true;
+            _log.Line("! Không khôi phục được hàng đợi: " + ex.Message + ". File gốc được giữ tại " + _queueStatePath + "; tự lưu hàng đợi đã tắt trong phiên này.");
+            MessageBox.Show(this, "Không thể khôi phục hàng đợi: " + ex.Message + "\nFile gốc được giữ tại:\n" + _queueStatePath + "\nTự lưu hàng đợi tạm tắt trong phiên này.", "Lỗi khôi phục hàng đợi", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private async void MnuQueueRun_Click(object sender, RoutedEventArgs e)
@@ -1297,8 +1307,11 @@ public partial class MainWindow : Window
             if (result == null) break;
             bool completed = !result.Cancelled && result.ExitCode == 0;
             if (completed) _jobQueue.Remove(queued);
-            _lastGeneratedResult = result;
-            _lastGeneratedSpec = CloneJobSpec(job);
+            if (completed)
+            {
+                _lastGeneratedResult = result;
+                _lastGeneratedSpec = CloneJobSpec(job);
+            }
             ShowResult(result, "Hàng đợi");
             RefreshQueueMenu();
             if (!completed) break;

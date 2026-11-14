@@ -141,7 +141,7 @@ internal static class ReleaseAuditService
             var statement = StatementConsistencyChecker.Check(document, problem, config,
                 manualTests.Where(test => test.IsSample).ToList());
             foreach (string error in statement.Errors) report.Add(ReleaseAuditLevel.Error, "Nội dung đề", error);
-            foreach (string warning in statement.Warnings) report.Add(ReleaseAuditLevel.Warning, "Nội dung đề", warning);
+            foreach (string warning in statement.Warnings) report.Add(warning.StartsWith("Mô tả input đã khác cấu trúc", StringComparison.Ordinal) ? ReleaseAuditLevel.Info : ReleaseAuditLevel.Warning, "Nội dung đề", warning);
             if (statement.Errors.Count == 0 && statement.Warnings.Count == 0)
                 report.Add(ReleaseAuditLevel.Pass, "Nội dung đề", "Các mục bắt buộc đã có và sample khớp lời giải chuẩn.");
 
@@ -204,7 +204,11 @@ internal static class ReleaseAuditService
                 {
                     if (ct.IsCancellationRequested) { report.Cancelled = true; return report; }
                     string input = inputs[i];
-                    string text = FileManager.ReadText(input);
+                    if (!FileManager.TryReadText(input, out string text, out string? readError))
+                    {
+                        report.Add(ReleaseAuditLevel.Error, "Không đọc được input", Path.GetFileName(input) + ": " + readError);
+                        continue;
+                    }
                     inputSizes.Add(new FileInfo(input).Length);
                     Config testConfig = ReleaseAuditCommon.ConfigFor(config, options.GeneratedSpec, i);
                     if (problem.ValidateInput(text, testConfig) is { } validationError)
@@ -270,8 +274,8 @@ internal static class ReleaseAuditService
                     report.Add(ReleaseAuditLevel.Pass, "Độ phủ test (heuristic + đo input)", "Không thấy thiếu chế độ rõ ràng từ tên nhóm, cấu hình và kích thước đã đo.");
                 else
                 {
-                    foreach (string suggestion in coverage.Suggestions.Take(6))
-                        report.Add(ReleaseAuditLevel.Warning, "Độ phủ test (heuristic + đo input)", suggestion);
+                    foreach (string suggestion in coverage.Suggestions)
+                        report.Add(suggestion.StartsWith("Thiếu nhóm test có nhãn độ phủ bắt buộc", StringComparison.Ordinal) ? ReleaseAuditLevel.Warning : ReleaseAuditLevel.Info, "Độ phủ test (heuristic + đo input)", suggestion);
                     report.Add(ReleaseAuditLevel.Info, "Độ phủ test", "Cần so với các trường hợp biên logic của đề.");
                 }
 

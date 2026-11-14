@@ -74,6 +74,7 @@ public partial class App : Application
         string path = Settings.DefaultUserPath;
         bool existed = File.Exists(path);
         AppSettings = Settings.Load(path, out string? warn);
+        AppSettings.PersistRecentSolution = true;
         if (!string.IsNullOrWhiteSpace(warn)) AppendSettingsWarning(warn);
         string docs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OjGen");
         // Mặc định (chưa có file cấu hình) hoặc đường dẫn tương đối: đặt trong Documents\OjGen để người dùng dễ tìm.

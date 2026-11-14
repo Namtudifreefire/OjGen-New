@@ -61,7 +61,8 @@ public partial class ManualTestsWindow : Window
         txtName.Text = test.Name;
         chkSample.IsChecked = test.IsSample;
         txtInput.Text = test.Input;
-        txtOutput.Text = test.ExpectedOutput.Length > 0 ? test.ExpectedOutput : test.GeneratedOutput;
+        txtOutput.Text = test.ExpectedOutput;
+        txtGeneratedOutput.Text = test.GeneratedOutput;
         cmbConfig.SelectedItem = _choices.FirstOrDefault(choice => ConfigEquals(choice.Config, test.Cfg));
         _switching = false;
         lblValidation.Text = "";
@@ -76,6 +77,7 @@ public partial class ManualTestsWindow : Window
         chkSample.IsChecked = false;
         txtInput.Clear();
         txtOutput.Clear();
+        txtGeneratedOutput.Clear();
         cmbConfig.SelectedIndex = 0;
         lstTests.SelectedItem = null;
         _switching = false;

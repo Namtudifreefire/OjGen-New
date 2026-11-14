@@ -171,8 +171,12 @@ internal static class ProblemPackageExporter
             {
                 if (manualTests.Count > testInputs.Count) throw new InvalidDataException("Bộ test thiếu test nhập tay đã sinh.");
                 for (int i = 0; i < manualTests.Count; i++)
-                    if (!string.Equals(FileManager.ReadText(testInputs[i]), manualTests[i].Input, StringComparison.Ordinal))
+                {
+                    if (!FileManager.TryReadText(testInputs[i], out string testText, out string? readError))
+                        throw new IOException(readError);
+                    if (!string.Equals(testText, manualTests[i].Input, StringComparison.Ordinal))
                         throw new InvalidDataException("Test nhập tay không còn khớp bộ test đã sinh: " + Path.GetFileName(testInputs[i]));
+                }
             }
             foreach (string input in testInputs)
                 if (!File.Exists(Path.ChangeExtension(input, ".out")))
@@ -219,7 +223,8 @@ internal static class ProblemPackageExporter
 
         AtomicFile.WriteAllText(Path.Combine(packageDirectory, "statement.md"), document.ToMarkdown(), new UTF8Encoding(false));
         AtomicFile.WriteAllText(Path.Combine(packageDirectory, "statement.html"), document.ToHtml(), new UTF8Encoding(false));
-        string packagedSolutionPath = options.IncludeReferenceSolution ? options.ReferenceSolution : "";
+        string packagedSolutionPath = options.IncludeReferenceSolution && options.ReferenceSolution.Length > 0
+            ? Path.Combine("solutions", Path.GetFileName(options.ReferenceSolution)) : "";
         ProblemProfileFile.From(problem, config, document.Name, document.Code, packagedSolutionPath).Save(Path.Combine(packageDirectory, "problem.ojproblem.json"));
 
         int inputs = 0, outputs = 0, samples = 0;

@@ -7,10 +7,10 @@ internal static class HelpContent
 @"OjGen - TRÌNH TẠO BỘ TEST CHO BÀI LẬP TRÌNH THI ĐẤU
 
 1. QUY TRÌNH NHANH
-   a) Bấm 'Thiết lập bài' để đặt tên/mã bài, chọn khuôn input, chỉnh giới hạn và gắn lời giải chuẩn. Có thể lưu/mở hồ sơ .ojproblem.json để dùng lại.
+   a) Bấm 'Đặt tên và mã bài…' để đặt tên/mã bài, chọn khuôn input, chỉnh giới hạn và gắn lời giải chuẩn. Có thể lưu/mở hồ sơ .ojproblem.json để dùng lại.
    b) Bấm 'Nhóm test' nếu cần chia dữ liệu thành các nhóm như nhỏ, biên, ngẫu nhiên hoặc lớn. Mỗi nhóm có số test, seed và giới hạn riêng; để trống seed nhóm = seed ổn định được tạo từ seed chính.
-   c) Bấm 'Test tay/mẫu' để nhập hoặc mở input, chọn cấu hình xác thực, rồi đánh dấu test mẫu nếu cần.
-   d) Bấm 'Xem trước test mẫu' để sinh và xác thực input mẫu; khi tạo, rà lại kế hoạch và xác nhận trước khi ghi file.
+   c) Bấm 'Thêm test tay / sample…' để nhập hoặc mở input, chọn cấu hình xác thực, rồi đánh dấu test mẫu nếu cần.
+   d) Bấm 'Kiểm tra input mẫu' để sinh và xác thực input mẫu; khi tạo, rà lại kế hoạch và xác nhận trước khi ghi file.
    e) 'So sánh lời giải' chạy lời giải chuẩn và lời giải cần thử trên test nhỏ; khác biệt có thể lưu thành input và hai output để tái hiện.
    f) Sau khi tạo, nút 'Độ phủ & gợi ý' tóm tắt các kiểu cấu hình/nhóm đã dùng và đề xuất nhóm hoặc chế độ còn thiếu. Đây là gợi ý heuristic, cần đối chiếu với logic đề.
    g) Chọn Tệp → 'Soạn nội dung đề' để viết mô tả, input/output, ràng buộc và ví dụ; preview hỗ trợ bảng, liên kết, ảnh HTTPS, văn bản đa ngôn ngữ và công thức TeX cơ bản.
@@ -18,7 +18,7 @@ internal static class HelpContent
    i) Nếu chọn validator, OjGen chạy nó trên mọi input hiện có và các input sai mẫu; nếu chọn lời giải độc lập, OjGen so sánh với lời giải chuẩn trên 100 test nhỏ có seed cố định. Lỗi kiểm định sẽ chặn đóng gói; báo cáo được lưu trong AUDIT_REPORT.txt. Checker được đóng gói nhưng không chạy tự động vì mỗi judge dùng giao diện đối số riêng.
    j) SHA256SUMS.txt ghi dấu từng file .inp/.out. Kiểm định sẽ báo lỗi nếu file đã đổi sau lần sinh; gói bài tạo thêm PACKAGE_SHA256SUMS.txt, AUDIT_REPORT.txt và PACKAGE.txt (seed, phiên bản/runtime/OS, SHA-256 các tool/lời giải).
    k) Chọn Công cụ → 'Khung validator/checker' để tạo validator theo khuôn và chạy thử bằng contract hợp lệ/không hợp lệ; checker có mẫu Testlib, sai số số thực, token không thứ tự.
-   l) Kết quả sinh test nằm trong thư mục đầu ra: test01.inp, test01.out, ..., ojgen_info.txt (ghi lại bài, seed, test nhập tay và cấu hình từng nhóm), SHA256SUMS.txt và file .zip cùng tên thư mục.
+   l) Kết quả sinh test nằm trong thư mục đầu ra: test01.inp, test01.out, ..., ojgen_info.txt (ghi lại bài, seed, test nhập tay và cấu hình từng nhóm), SHA256SUMS.txt, TEST_INVENTORY.csv và file .zip cùng tên thư mục.
 
 2. LỜI GIẢI CHUẨN
    - C/C++: cần gcc/g++ tương ứng. Rust cần rustc, Go cần go, Pascal cần fpc, Kotlin cần kotlinc và Java runtime; compiler phải có trong PATH. Cấu hình build nhiều file bằng .ojrun.json.
@@ -28,10 +28,10 @@ internal static class HelpContent
    - Lời giải chuẩn, validator và lời giải dùng để đối chiếu chạy trên máy bạn với quyền của bạn; OjGen chỉ giới hạn thời gian / dung lượng output / bộ nhớ, KHÔNG phải sandbox. Chỉ chạy code bạn tin tưởng.
 
 3. TÁI TẠO BỘ TEST
-   Cùng dạng bài + cùng tham số + cùng seed + cùng số test ⇒ luôn ra đúng bộ test cũ (giống hệt bản dòng lệnh C++ trước đây). Seed nằm trong ojgen_info.txt.
+   Cùng phiên bản OjGen + cùng dạng bài + cùng tham số + cùng seed + cùng số test ⇒ tạo lại đúng input. Seed nằm trong ojgen_info.txt.
 
 4. THƯ MỤC ĐÃ CÓ TEST
-   Mặc định OjGen KHÔNG ghi đè: nếu thư mục đã có test thì tạo thư mục mới (_2, _3, ...). Tích 'Ghi đè' để xóa các file .inp/.out, ojgen_info.txt và SHA256SUMS.txt cũ (file khác được giữ nguyên).
+   Mặc định OjGen KHÔNG ghi đè: nếu thư mục đã có test thì tạo thư mục mới (_2, _3, ...). Tích 'Ghi đè' để xóa các file .inp/.out và metadata OjGen (ojgen_info.txt, SHA256SUMS.txt, TEST_INVENTORY.csv, checkpoint, provenance, audit); file khác được giữ nguyên.
 
 5. KẾT QUẢ
    - HOÀN CHỈNH: đủ .inp và .out.   - CHỈ CÓ INPUT: không dùng lời giải.

@@ -30,6 +30,7 @@ public sealed class Settings
 
     /// <summary>Đường dẫn file đã nạp (dùng để ghi nhớ lời giải gần nhất); null = thư mục hiện tại.</summary>
     public string? SourcePath { get; set; }
+    public bool PersistRecentSolution { get; set; }
 
     public string SolutionFor(string problemId) =>
         SolutionByProblem.TryGetValue(problemId, out var s) ? s : "";

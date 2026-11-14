@@ -345,6 +345,9 @@ public static class SolutionRunner
                      "    Hãy bọc freopen trong  #ifndef OJGEN ... #endif  (ojgen tự định nghĩa macro OJGEN khi biên dịch).");
         try { Directory.CreateDirectory(workDir); }
         catch (Exception ex) { ps.Error = "Không tạo được thư mục làm việc: " + ex.Message; return ps; }
+        workDir = Path.Combine(Path.GetFullPath(workDir), "ojgen-cpp-" + Guid.NewGuid().ToString("N"));
+        try { Directory.CreateDirectory(workDir); ps.TemporaryDirectory = workDir; }
+        catch (Exception ex) { ps.Error = "Không tạo được thư mục biên dịch riêng: " + ex.Message; return ps; }
 
         string flags = st.EffectiveFlags;
         ulong h = Util.Fnv1a(codeBytes);
@@ -359,7 +362,7 @@ public static class SolutionRunner
         // Biên dịch trong thư mục làm việc, dùng bản sao mã nguồn có tên ASCII và đường dẫn tương đối:
         // tránh lỗi với đường dẫn có dấu tiếng Việt ở các bản g++ MinGW cũ.
         string srcName = "src_" + tag + ext;
-        if (!FileManager.WriteFile(Path.Combine(workDir, srcName), codeBytes, out string? werr)) { ps.Error = werr ?? ""; return ps; }
+        if (!FileManager.WriteFile(Path.Combine(workDir, srcName), codeBytes, out string? werr)) { ps.Error = werr ?? ""; Cleanup(ps); return ps; }
         string compiler = ResolveCompiler(st.Compiler, log);
         if (compiler.IndexOfAny(new[] { '/', '\\' }) >= 0 && File.Exists(compiler)) compiler = Path.GetFullPath(compiler);
         var args = new List<string> { compiler, srcName };
@@ -386,7 +389,7 @@ public static class SolutionRunner
         string logText = FileManager.ReadText(logPath);
         // Đổi tên bản sao trong thông báo lỗi về lại tên file gốc của người dùng.
         logText = logText.Replace(srcName, src, StringComparison.Ordinal);
-        if (rr.Status == RunStatus.Cancelled) { ps.Error = "Đã hủy trong lúc biên dịch."; return ps; }
+        if (rr.Status == RunStatus.Cancelled) { ps.Error = "Đã hủy trong lúc biên dịch."; Cleanup(ps); return ps; }
         if (rr.Status != RunStatus.Ok || !File.Exists(exe))
         {
             ps.Error = "BIÊN DỊCH THẤT BẠI";
@@ -394,6 +397,7 @@ public static class SolutionRunner
             else if (rr.Status == RunStatus.Timeout) ps.Error += $": quá {st.CompileTimeoutSec} giây.";
             if (logText.Length > 0) ps.Error += "\nThông báo của trình biên dịch:\n" + FirstLines(logText, 40);
             try { File.Delete(exe); } catch (Exception) { }
+            Cleanup(ps);
             return ps;
         }
         log.Line($"Biên dịch thành công ({rr.ElapsedMs} ms).");
@@ -474,7 +478,7 @@ public static class SolutionRunner
             ".rs" => FindOnPath("rustc"),
             ".go" => FindOnPath("go"),
             ".pas" or ".pp" => FindOnPath("fpc"),
-            _ => FindOnPath("gcc"),
+            _ => ResolveCompiler(st.Compiler, log),
         };
         string language = ext switch { ".rs" => "Rust", ".go" => "Go", ".pas" or ".pp" => "Pascal", _ => "C" };
         string compilerName = ext switch { ".rs" => "rustc", ".go" => "Go (go)", ".pas" or ".pp" => "Free Pascal (fpc)", _ => "gcc" };
@@ -489,8 +493,8 @@ public static class SolutionRunner
             {
                 ".rs" => new List<string> { src, "--edition=2021", "-O", "-o", exe },
                 ".go" => new List<string> { "build", "-o", exe, src },
-                ".pas" or ".pp" => new List<string> { "-O2", "-o" + exe, src },
-                _ => new List<string> { src }.Concat(Util.SplitArgs(st.CxxFlags.Trim().Length == 0 ?
+                ".pas" or ".pp" => new List<string> { "-O2", "-dOJGEN", "-o" + exe, src },
+                _ => new List<string> { "-x", "c", "-DOJGEN", "-I", Path.GetDirectoryName(src)!, src }.Concat(Util.SplitArgs(st.CxxFlags.Trim().Length == 0 ?
                     (OperatingSystem.IsWindows() ? "-O2 -std=c17 -static -Wl,--stack=268435456" : "-O2 -std=c17") : st.CxxFlags)).Concat(new[] { "-o", exe }).ToList(),
             };
             string compileLog = Path.Combine(buildDir, "compile.log");
@@ -586,8 +590,9 @@ public static class SolutionRunner
     {
         var rep = new OutputReport { Total = inputs.Count };
         try { Directory.CreateDirectory(workDir); } catch (Exception) { }
-        string tmpOut = Path.GetFullPath(Path.Combine(workDir, "run_stdout.tmp"));
-        string tmpErr = Path.GetFullPath(Path.Combine(workDir, "run_stderr.tmp"));
+        string runId = Guid.NewGuid().ToString("N");
+        string tmpOut = Path.GetFullPath(Path.Combine(workDir, "run_stdout-" + runId + ".tmp"));
+        string tmpErr = Path.GetFullPath(Path.Combine(workDir, "run_stderr-" + runId + ".tmp"));
         var lim = new RunLimits
         {
             TimeoutMs = st.TimeoutMs,
