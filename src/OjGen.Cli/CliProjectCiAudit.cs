@@ -113,8 +113,10 @@ internal static class CliProjectCiAudit
 
             int expected = Int(root, "LastGeneratedCount");
             JsonElement planJson = Property(root, "LastGeneratedPlan");
-            if (planJson.ValueKind != JsonValueKind.Object || Property(planJson, "Groups").ValueKind != JsonValueKind.Array || Property(planJson, "Groups").GetArrayLength() == 0)
+            if (planJson.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
                 planJson = Property(root, "TestPlan");
+            if (planJson.ValueKind == JsonValueKind.Object && Property(planJson, "Groups").ValueKind != JsonValueKind.Array)
+                throw new InvalidDataException("Kế hoạch test đã lưu không có danh sách Groups hợp lệ.");
             TestPlanProfile? plan = planJson.ValueKind == JsonValueKind.Object
                 ? JsonSerializer.Deserialize<TestPlanProfile>(planJson.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) : null;
             var groups = plan?.Groups?.Count > 0 ? plan.ToGroups(problem) : new List<TestGroupSpec>();

@@ -222,11 +222,11 @@ public static partial class TestInventoryService
         if (root == null) return result;
         if (root["groups"] is JsonArray groups)
             foreach (JsonNode? node in groups)
-                if (node is JsonObject group && group["name"]?.GetValue<string>() is { Length: > 0 } name)
+                if (node is JsonObject group && (group["name"] ?? group["Name"])?.GetValue<string>() is { Length: > 0 } name)
                     result[name] = ParseConfig(group["ints"] as JsonObject, group["texts"] as JsonObject, problem);
         if (root["manualTests"] is JsonArray manualTests)
             foreach (JsonNode? node in manualTests)
-                if (node is JsonObject test && test["configName"]?.GetValue<string>() is { Length: > 0 } name)
+                if (node is JsonObject test && (test["configName"] ?? test["ConfigName"])?.GetValue<string>() is { Length: > 0 } name)
                     result[name] = ParseConfig(test["ints"] as JsonObject, test["texts"] as JsonObject, problem);
         return result;
     }

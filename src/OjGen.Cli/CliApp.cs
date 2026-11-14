@@ -56,6 +56,7 @@ internal static class CliApp
         s.Append("  --force              Ghi đè bộ test và metadata OjGen cũ (kể cả bản nháp statement); giữ file khác\n");
         s.Append("                       (mặc định: dùng thư mục mới <tên>_2, _3... nếu đã có test/metadata/ZIP)\n");
         s.Append("  --no-zip             Không tạo file ZIP (mặc định có tạo khi bộ test hoàn chỉnh hoặc chỉ có input)\n");
+        s.Append("  --zip                Bật tạo ZIP theo chính sách trạng thái bộ test (mặc định)\n");
         s.Append("  --zip-incomplete     Vẫn tạo ZIP khi lời giải lỗi ở một số test\n");
         s.Append("  --rebuild            Biên dịch lại lời giải dù mã nguồn không đổi\n");
         s.Append("  --timeout MS         Thời gian tối đa mỗi test (ms)\n");
@@ -783,6 +784,11 @@ internal static class CliApp
         }
         if ((a.Kv.ContainsKey("checker-args") || a.Kv.ContainsKey("checker-timeout")) && !a.Kv.ContainsKey("checker"))
         { Err("LỖI: --checker-args và --checker-timeout cần đi cùng --checker."); return 2; }
+        if (a.Flags.Contains("zip") && a.Flags.Contains("no-zip"))
+        {
+            Err("LỖI: không dùng đồng thời --zip và --no-zip.");
+            return 2;
+        }
         ZipMode zipMode = a.Flags.Contains("no-zip") ? ZipMode.No : ZipMode.Yes;
         if (a.Flags.Contains("resume") && a.Flags.Contains("force"))
         { Err("LỖI: --resume và --force không dùng cùng nhau."); return 2; }

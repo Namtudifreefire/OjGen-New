@@ -98,6 +98,8 @@ try {
         Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination (Join-Path $packageDirectory $file)
     }
     Copy-Item -LiteralPath $notesPath -Destination (Join-Path $packageDirectory "RELEASE_NOTES_v$Version.md")
+    New-Item -ItemType Directory -Path (Join-Path $packageDirectory 'docs') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/PLUGIN_SDK.md') -Destination (Join-Path $packageDirectory 'docs/PLUGIN_SDK.md')
 
     $regressionStatus = if ($SkipTests) { 'Skipped in this invocation; run separately or rely on CI result.' } else { 'Passed.' }
     $preflight = @(

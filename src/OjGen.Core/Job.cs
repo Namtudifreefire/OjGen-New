@@ -465,6 +465,8 @@ public static class Job
                     string outputFingerprint = job.ResumeGeneration
                         ? SolutionRunner.CreateResumeFingerprint(job.SolutionPath, st)
                         : "";
+                    if (job.ResumeGeneration && ps.Compiled && ps.Argv.Count > 0 && File.Exists(ps.Argv[0]))
+                        outputFingerprint += ":" + Sha256File(ps.Argv[0]);
                     rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct,
                         resume: job.ResumeGeneration, resumeFingerprint: outputFingerprint, solutionWorkingDirectory: ps.WorkingDirectory);
                 }
@@ -639,6 +641,35 @@ public static class Job
             return result;
         }
         result.InputCount = inputs.Count;
+        // Output and info will change, so the previous audit cannot describe this set.
+        // Preserve it outside the ZIP instead of silently deleting the user's reports.
+        var auditFiles = new[] { "AUDIT_REPORT.txt", "PACKAGE.txt", "PACKAGE_SHA256SUMS.txt" }
+            .Select(name => Path.Combine(dir, name)).Where(File.Exists).ToList();
+        if (auditFiles.Count > 0)
+        {
+            string archive = Path.Combine(dir, ".ojgen-previous-audit-" + Guid.NewGuid().ToString("N"));
+            var moved = new List<(string Original, string Archived)>();
+            try
+            {
+                Directory.CreateDirectory(archive);
+                foreach (string original in auditFiles)
+                {
+                    string archived = Path.Combine(archive, Path.GetFileName(original));
+                    File.Move(original, archived);
+                    moved.Add((original, archived));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                foreach (var item in moved.AsEnumerable().Reverse())
+                    try { File.Move(item.Archived, item.Original); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                result.ExitCode = 2;
+                result.Error = "Không thể lưu lại báo cáo audit cũ: " + ex.Message;
+                log.Line("LỖI: " + result.Error + " (thư mục lưu: " + archive + ")");
+                return result;
+            }
+            log.Line("CẢNH BÁO: output thay đổi, cần chạy lại audit. Báo cáo cũ được lưu tại " + archive);
+        }
         log.Line($"Tạo lại output cho {inputs.Count} file .inp trong {dir}");
         PreparedSolution ps = SolutionRunner.Prepare(solution, st, st.WorkDir, forceRebuild, log, ct);
         SetStatus status;

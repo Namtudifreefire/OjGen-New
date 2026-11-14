@@ -140,8 +140,16 @@ internal sealed class ProblemAuthoringDocument
 
     private static string InlineMarkdown(string text)
     {
+        // Code spans are literal: do not interpret math, emphasis or links inside them.
+        return string.Concat(Regex.Split(text, @"(`[^`]+`)").Select(part =>
+            part.Length >= 2 && part[0] == '`' && part[^1] == '`'
+                ? "<code>" + WebUtility.HtmlEncode(part[1..^1]) + "</code>"
+                : InlineMarkup(part)));
+    }
+
+    private static string InlineMarkup(string text)
+    {
         string safe = WebUtility.HtmlEncode(text);
-        safe = Regex.Replace(safe, @"`([^`]+)`", "<code>$1</code>");
         safe = Regex.Replace(safe, @"\*\*([^*]+)\*\*", "<strong>$1</strong>");
         safe = Regex.Replace(safe, @"(?<!\*)\*([^*]+)\*(?!\*)", "<em>$1</em>");
         safe = Regex.Replace(safe, @"\$([^$]+)\$", match => FormatMath(match.Groups[1].Value));
@@ -164,7 +172,7 @@ internal sealed class ProblemAuthoringDocument
 
     private static string FormatMath(string source)
     {
-        string expression = WebUtility.HtmlEncode(source);
+        string expression = source; // InlineMarkup already HTML-encoded this text.
         expression = Regex.Replace(expression, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "<span class=\"frac\"><span>$1</span><span>$2</span></span>");
         expression = Regex.Replace(expression, @"\\sqrt\{([^{}]+)\}", "√<span class=\"root\">$1</span>");
         expression = Regex.Replace(expression, @"(?<=\S)_\{([^{}]+)\}|(?<=\S)_([A-Za-z0-9]+)", match =>

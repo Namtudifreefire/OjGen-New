@@ -91,6 +91,12 @@ public static class FileManager
         return a.Length - i < b.Length - j;
     }
 
+    internal static IComparer<string> NaturalComparer { get; } = Comparer<string>.Create((a, b) =>
+    {
+        int natural = NaturalLess(a, b) ? -1 : NaturalLess(b, a) ? 1 : 0;
+        return natural != 0 ? natural : StringComparer.Ordinal.Compare(a, b);
+    });
+
     /// <summary>Liệt kê file theo đuôi (vd ".inp", không phân biệt hoa thường), không đệ quy, sắp xếp tự nhiên.</summary>
     public static List<string> ListFilesWithExt(string dir, string ext)
     {

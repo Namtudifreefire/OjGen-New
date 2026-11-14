@@ -86,6 +86,7 @@ public static class CheckerAuditRunner
             Directory.CreateDirectory(tempDir);
             var prepared = SolutionRunner.Prepare(checkerPath, settings, Path.Combine(tempDir, "build"), false, log, ct);
             if (!prepared.Ok) return new CheckerAuditResult { Error = prepared.Error };
+            string runCwd = string.IsNullOrEmpty(prepared.WorkingDirectory) ? tempDir : prepared.WorkingDirectory;
 
             int passed = 0;
             var failures = new List<string>();
@@ -120,7 +121,7 @@ public static class CheckerAuditRunner
                 }
                 string testName = Path.GetFileNameWithoutExtension(input);
                 var argv = prepared.Argv.Concat(template.Select(value => BuildArg(value, input, output, output, testName))).ToList();
-                RunResult run = ProcessRunner.Run(argv, null, stdout, stderr, tempDir, runLimits, ct);
+                RunResult run = ProcessRunner.Run(argv, null, stdout, stderr, runCwd, runLimits, ct);
                 if (run.Status == RunStatus.Cancelled)
                     return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy checker.", Tests = testResults };
                 if (run.Status == RunStatus.Ok)
@@ -154,7 +155,7 @@ public static class CheckerAuditRunner
                     File.WriteAllText(outputPath, contractCase.ContestantOutput, new UTF8Encoding(false));
                     File.WriteAllText(answerPath, contractCase.Answer, new UTF8Encoding(false));
                     var argv = prepared.Argv.Concat(template.Select(value => BuildArg(value, inputPath, outputPath, answerPath, contractCase.Name))).ToList();
-                    RunResult run = ProcessRunner.Run(argv, null, stdout, stderr, tempDir, runLimits, ct);
+                    RunResult run = ProcessRunner.Run(argv, null, stdout, stderr, runCwd, runLimits, ct);
                     if (run.Status == RunStatus.Cancelled)
                         return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi chạy ca hợp đồng checker.", Tests = testResults };
                     bool actualAccepted = run.Status == RunStatus.Ok;
@@ -179,7 +180,7 @@ public static class CheckerAuditRunner
                 File.WriteAllText(malformedOutput, "OJGEN_INVALID_OUTPUT\n", new UTF8Encoding(false));
                 string testName = Path.GetFileNameWithoutExtension(firstInput);
                 var probeArgs = prepared.Argv.Concat(template.Select(value => BuildArg(value, firstInput, malformedOutput, official, testName))).ToList();
-                RunResult probe = ProcessRunner.Run(probeArgs, null, stdout, stderr, tempDir, runLimits, ct);
+                RunResult probe = ProcessRunner.Run(probeArgs, null, stdout, stderr, runCwd, runLimits, ct);
                 if (probe.Status == RunStatus.Cancelled)
                     return new CheckerAuditResult { Passed = passed, Failed = failures.Count, Cancelled = true, Error = "Đã hủy khi tự thử checker.", Tests = testResults };
                 if (probe.Status == RunStatus.Ok)

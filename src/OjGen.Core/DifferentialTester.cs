@@ -310,7 +310,7 @@ public static class DifferentialTester
     }
 
     private static (string Input, int Trials) MinimizeCounterexample(string input, Problem problem, Config config,
-        List<string> referenceArgv, List<string> candidateArgv, RunLimits limits, string tempDir,
+        List<string> referenceArgv, List<string> candidateArgv, string referenceCwd, string candidateCwd, RunLimits limits, string tempDir,
         bool ignoreWhitespace, int maxTrials, IJobLog log, CancellationToken ct)
     {
         string best = input;
@@ -325,9 +325,9 @@ public static class DifferentialTester
         {
             if (problem.ValidateInput(candidateInput, config) != null) return false;
             if (!FileManager.WriteFile(inputPath, candidateInput, out _)) return false;
-            RunResult reference = ProcessRunner.Run(referenceArgv, inputPath, refOut, refErr, tempDir, limits, ct);
+            RunResult reference = ProcessRunner.Run(referenceArgv, inputPath, refOut, refErr, referenceCwd, limits, ct);
             if (reference.Status != RunStatus.Ok || ct.IsCancellationRequested) return false;
-            RunResult candidate = ProcessRunner.Run(candidateArgv, inputPath, candidateOut, candidateErr, tempDir, limits, ct);
+            RunResult candidate = ProcessRunner.Run(candidateArgv, inputPath, candidateOut, candidateErr, candidateCwd, limits, ct);
             if (candidate.Status != RunStatus.Ok) return false;
             return !string.Equals(Normalize(FileManager.ReadText(refOut), ignoreWhitespace),
                 Normalize(FileManager.ReadText(candidateOut), ignoreWhitespace), StringComparison.Ordinal);
@@ -425,8 +425,8 @@ public static class DifferentialTester
                 string inputText = FileManager.ReadText(input);
                 string name = Path.GetFileNameWithoutExtension(input);
                 log.Progress("Đối chiếu lời giải", i + 1, generated.Inputs.Count);
-                var refRun = ProcessRunner.Run(reference.Argv, Path.GetFullPath(input), refOut, refErr, refDir, limits, ct, unixLimits: true);
-                var candidateRun = ProcessRunner.Run(candidate.Argv, Path.GetFullPath(input), candidateOut, candidateErr, candidateDir, limits, ct, unixLimits: true);
+                var refRun = ProcessRunner.Run(reference.Argv, Path.GetFullPath(input), refOut, refErr, string.IsNullOrEmpty(reference.WorkingDirectory) ? refDir : reference.WorkingDirectory, limits, ct, unixLimits: true);
+                var candidateRun = ProcessRunner.Run(candidate.Argv, Path.GetFullPath(input), candidateOut, candidateErr, string.IsNullOrEmpty(candidate.WorkingDirectory) ? candidateDir : candidate.WorkingDirectory, limits, ct, unixLimits: true);
                 if (refRun.Status == RunStatus.Cancelled || candidateRun.Status == RunStatus.Cancelled)
                 {
                     result.Cancelled = true;
@@ -461,7 +461,8 @@ public static class DifferentialTester
                         if (spec.MinimizeCounterexamples && refRun.Status == RunStatus.Ok && candidateRun.Status == RunStatus.Ok)
                         {
                             var minimized = MinimizeCounterexample(inputText, spec.Problem, spec.Cfg,
-                                reference.Argv, candidate.Argv, limits, tempDir, spec.IgnoreWhitespace,
+                                reference.Argv, candidate.Argv, string.IsNullOrEmpty(reference.WorkingDirectory) ? refDir : reference.WorkingDirectory,
+                                string.IsNullOrEmpty(candidate.WorkingDirectory) ? candidateDir : candidate.WorkingDirectory, limits, tempDir, spec.IgnoreWhitespace,
                                 spec.MaxMinimizationTrials, log, ct);
                             failure.MinimizationTrials = minimized.Trials;
                             if (minimized.Input.Length < inputText.Length) failure.MinimizedInput = minimized.Input;

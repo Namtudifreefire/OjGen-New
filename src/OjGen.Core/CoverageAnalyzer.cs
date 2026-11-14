@@ -45,7 +45,8 @@ public static class CoverageAnalyzer
         else if (k.StartsWith("max", StringComparison.Ordinal)) k = k[3..];
         return k switch
         {
-            "n" or "len" or "length" or "size" or "count" => "n",
+            "n" or "size" or "count" => "n",
+            "len" or "length" => "len",
             "m" => "m",
             "q" => "q",
             "t" => "t",
@@ -122,7 +123,12 @@ public static class CoverageAnalyzer
                     else if (problem.Id is "graph" or "grid" or "queries" or "prefix_sum_range" or "prefix_subsequence_range" or "tdc_prefix_sum")
                     {
                         Add("n", a);
-                        if (first.Length > 1 && TryNumber(first[1], out long b))
+                        if (problem.Id == "prefix_sum_range")
+                        {
+                            reader.ReadLine(); // array
+                            if (TryNumber((reader.ReadLine() ?? "").Trim(), out long q)) Add("q", q);
+                        }
+                        else if (first.Length > 1 && TryNumber(first[1], out long b))
                             Add(problem.Id is "queries" or "prefix_sum_range" or "prefix_subsequence_range" or "tdc_prefix_sum" ? "q" : "m", b);
                     }
                     else if (problem.Id == "matrix")

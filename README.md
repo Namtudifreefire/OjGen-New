@@ -268,7 +268,7 @@ Kết quả xác minh bản 3.1.0:
 
 - `tests/run_tests.sh`: 65/65 kiểm tra đầu-cuối đạt.
 - `ojgen --selftest`: 290/290 kiểm tra đạt trên CLI đã publish.
-- `tests/check_wpf_static.py`: 17/17 tệp XAML hợp lệ; kiểm tra tên, sự kiện, tài nguyên và theme đạt.
+- `tests/check_wpf_static.py`: kiểm tra XAML, tên điều khiển, sự kiện, tài nguyên và theme đạt tại thời điểm kiểm tra.
 - CLI đã publish chạy smoke test tạo bộ test, kiểm validator, đối chiếu lời giải trên 100 trường hợp, kiểm tính tái lập và tạo/xác minh gói kiểm định thành công.
 - GUI đã publish mở được, xem trước và tạo thành công 3 file `.inp` với seed `2024`; manifest SHA-256 khớp cả 3 file, ZIP hợp lệ và có đủ test cùng metadata. Smoke test không dùng lời giải nên không tạo `.out`.
 
@@ -277,7 +277,7 @@ So sánh 145 cấu hình với phiên bản C++ là kết quả đã ghi nhận 
 Kết quả xác minh mã nguồn 3.2.0 trên Windows:
 
 - `tests/run_tests.sh`: 82/82 kiểm tra đầu-cuối đạt; `ojgen --selftest`: 319/319 kiểm tra đạt.
-- `tests/check_wpf_static.py`: 17/17 tệp XAML hợp lệ.
+- `tests/check_wpf_static.py`: kiểm tra XAML hợp lệ tại thời điểm kiểm tra.
 - Đã publish thử GUI và CLI win-x64; CLI báo đúng phiên bản và vượt self-test, GUI vượt smoke test khởi động.
 - Gói ZIP có cả `GUI/OjGen.exe` và `CLI/ojgen.exe`, đủ tài liệu, manifest SHA-256 của các tệp và checksum riêng cho ZIP.
 - Các lệnh publish có cảnh báo NU1900 vì môi trường không truy cập được NuGet để tải dữ liệu lỗ hổng; restore, build, publish và smoke test vẫn hoàn tất.

@@ -552,7 +552,7 @@ public static class AlgorithmTopics
     private static bool IsTreeTopic(string key) =>
         key is "tree (cây)" or "tree-isomorphism" or "dp-tree (quy hoạch động trên cây)" or
             "binary-lifting" or "heavy-light-decomposition" or "lca (tổ tiên chung gần nhất)" or "centroid" or
-            "euler-tour (đường đi Euler trên cây)" or "mo-tree (Mo trên cây)" or "small-to-large";
+            "euler-tour (đường đi euler trên cây)" or "mo-tree (mo trên cây)" or "small-to-large";
 
     private static bool IsGraphTopic(string key) =>
         key.Contains("graph", StringComparison.Ordinal) || key.Contains("flow-", StringComparison.Ordinal) ||

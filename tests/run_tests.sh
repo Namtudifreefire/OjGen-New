@@ -36,12 +36,20 @@ COMMON=(--no-zip)
 SOL=tests/solutions
 
 echo "== Tự kiểm tra nội bộ"
+expect_exit 0 "hồi quy Markdown, provenance và tiến độ CLI" dotnet run --project tests/BugRegression/BugRegression.csproj -c Release
 expect_exit 0 "--selftest" "${BIN[@]}" --selftest
 
 echo "== Lệnh ví dụ"
+for module in tree grid matrix pairs multi_test chess_moves chess_piece_moves chess_knight_targets chess_knight_reachability chess_knight_shortest; do
+    expect_exit 0 "$module: sinh test" "${BIN[@]}" --problem "$module" --tests 3 --seed 123 --out "$T/module_$module" --no-zip
+    [[ $(count "$T/module_$module" .inp) -eq 3 ]] && ok "$module: đủ 3 input" || bad "$module: thiếu input"
+done
 expect_exit 0 "--version" "${BIN[@]}" --version
 expect_exit 0 "--list" "${BIN[@]}" --list
 expect_exit 0 "--info graph" "${BIN[@]}" --info graph
+expect_exit 2 "--zip và --no-zip không được dùng cùng nhau" "${BIN[@]}" --problem single_n --zip --no-zip
+expect_exit 0 "--zip tạo ZIP" "${BIN[@]}" --problem single_n --tests 1 --seed 1 --zip --out "$T/explicit_zip"
+[[ -f "$T/explicit_zip.zip" ]] && ok "--zip: đã tạo ZIP" || bad "--zip: thiếu ZIP"
 expect_exit 0 "--problem array --tests 20 --seed 2024" "${BIN[@]}" --problem array --tests 20 --seed 2024 --out "$T/array"
 [[ $(count "$T/array" .inp) -eq 20 && -f "$T/array.zip" ]] && ok "array: 20 file .inp + ZIP" || bad "array: thiếu file"
 [[ -f "$T/array/SHA256SUMS.txt" && $(wc -l < "$T/array/SHA256SUMS.txt") -eq 20 ]] && ok "array: manifest SHA-256 có đủ 20 input" || bad "array: manifest SHA-256 sai"
@@ -107,8 +115,8 @@ for m in single_n two_ints array queries string custom graph; do
     expect_exit 0 "$m + lời giải mẫu" "${BIN[@]}" --problem $m --tests 15 --seed 1 --solution "examples/solutions/${m}_sol.cpp" --out "$T/sol_$m"
     [[ $(count "$T/sol_$m" .out) -eq 15 && -f "$T/sol_$m.zip" ]] && ok "$m: 15 file .out + ZIP" || bad "$m: thiếu .out/ZIP"
 done
-expect_exit 0 "dùng lại bản biên dịch" "${BIN[@]}" --problem single_n --tests 3 --seed 1 --solution examples/solutions/single_n_sol.cpp --out "$T/cache" "${COMMON[@]}"
-grep -q "dùng lại" "$LOG" && ok "bản biên dịch được dùng lại (cache)" || bad "không dùng cache biên dịch"
+expect_exit 0 "biên dịch lại để cập nhật header" "${BIN[@]}" --problem single_n --tests 3 --seed 1 --solution examples/solutions/single_n_sol.cpp --out "$T/cache" "${COMMON[@]}"
+grep -q "Biên dịch thành công" "$LOG" && ok "lời giải C++ được biên dịch lại" || bad "không biên dịch lại C++"
 
 echo "== Giới hạn riêng từng vị trí"
 expect_exit 0 "custom --bounds 1:10,50:100,-20:20" "${BIN[@]}" --problem custom --tests 60 --seed 5 --bounds "1:10,50:100,-20:20" --out "$T/bounds" "${COMMON[@]}"
@@ -201,6 +209,9 @@ expect_exit 0 "--audit chạy validator và so sánh lời giải" "${BIN[@]}" -
 [[ -f "$T/audit/AUDIT_REPORT.txt" && -f "$T/audit/PACKAGE.txt" && -f "$T/audit/PACKAGE_SHA256SUMS.txt" ]] && ok "audit: lưu báo cáo và manifest gói" || bad "audit: thiếu báo cáo hoặc manifest"
 grep -q "Validator hai chiều" "$T/audit/AUDIT_REPORT.txt" && grep -q "Đối chiếu lời giải" "$T/audit/AUDIT_REPORT.txt" && ok "audit: validator hai chiều và đối chiếu lời giải đạt" || bad "audit: thiếu kết quả kiểm tra"
 grep -q "Giá trị n đo từ input" "$T/audit/AUDIT_REPORT.txt" && grep -q "Độ tin cậy độ phủ" "$T/audit/AUDIT_REPORT.txt" && grep -q "Phạm vi n: cấu hình nhóm" "$T/audit/ojgen_info.txt" && ok "audit: ghi phép đo, cận nhóm và nhãn tin cậy độ phủ" || bad "audit: thiếu phép đo độ phủ"
+cp -R "$T/audit" "$T/audit_regen"
+expect_exit 0 "tạo lại output và ZIP sau audit" "${BIN[@]}" --regen-out "$T/audit_regen" --solution examples/solutions/array_sol.cpp
+[[ -f "$T/audit_regen.zip" && ! -e "$T/audit_regen/PACKAGE_SHA256SUMS.txt" ]] && grep -q "cần chạy lại audit" "$LOG" && find "$T/audit_regen" -name PACKAGE_SHA256SUMS.txt | grep -q . && ok "regen: lưu audit cũ và cảnh báo kiểm định lại" || bad "regen: audit cũ hoặc cảnh báo không đúng"
 expect_exit 0 "audit chạy checker trên từng test" "${BIN[@]}" --problem array --tests 3 --seed 2024 --solution examples/solutions/array_sol.cpp --checker "$SOL/pass_checker.cpp" --checker-args "{input} {output} {answer}" --checker-timeout 5000 --audit --no-zip --out "$T/audit_checker"
 grep -q "Checker đạt 3 ca (bao gồm cặp output chính thức và contract" "$T/audit_checker/AUDIT_REPORT.txt" && ok "checker: audit ghi nhận đủ test và timeout" || bad "checker: báo cáo thiếu kết quả"
 expect_exit 0 "audit thực thi contract validator và checker" "${BIN[@]}" --problem array --tests 3 --seed 2024 --minN 1 --maxN 10 --minVal 1 --maxVal 100 --solution examples/solutions/array_sol.cpp --validator "$SOL/array_validator.py" --checker "$SOL/pass_checker.cpp" --checker-args "{input} {output} {answer}" --contract-suite tests/fixtures/array-contract.ojcontract.json --audit --no-zip --out "$T/audit_contract"
@@ -230,6 +241,8 @@ cat > "$T/ci_src/manual.ojproject" <<'EOF'
   "LastGeneratedCount": 3,
   "LastGeneratedSeed": 7,
   "LastGeneratedProblemId": "single_n",
+  "LastGeneratedPlan": { "Version": 1, "ProblemId": "single_n", "Groups": [] },
+  "TestPlan": { "Version": 1, "ProblemId": "single_n", "Groups": [{ "Name": "sau khi sinh", "TestCount": 99, "Ints": {}, "Texts": {} }] },
   "LastGeneratedManualTests": [
     { "Name": "tay_1", "Input": "5\n", "IsSample": false, "ConfigName": "Cấu hình chung", "Ints": {}, "Texts": {} }
   ]
@@ -239,7 +252,7 @@ EOF
 # ("Sinh lại được 2 input nhưng thư mục có 3").
 expect_exit 1 "--ci-project chấp nhận project có test nhập tay" "${BIN[@]}" --ci-project "$T/ci_src/manual.ojproject" --json-report "$T/ci_manual.json"
 grep -q '"passed": true' "$T/ci_manual.json" && ok "ci-project: test tay không gây lỗi tái lập giả" || bad "ci-project: báo lỗi sai với test nhập tay"
-grep -q 'SHA-256 khớp cho cả 3 input' "$T/ci_manual.json" && ok "ci-project: tái lập khớp cả 3 input (gồm test nhập tay)" || bad "ci-project: không đối chiếu đủ 3 input"
+grep -q 'SHA-256 khớp cho cả 3 input' "$LOG" && ok "ci-project: tái lập khớp cả 3 input (gồm test nhập tay)" || bad "ci-project: không đối chiếu đủ 3 input"
 
 if [[ -n "${CPP_REF:-}" && -x "$CPP_REF" ]]; then
     echo "== So khớp từng byte với bản C++ gốc ($CPP_REF)"

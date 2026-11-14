@@ -58,45 +58,6 @@ internal sealed class ReleaseAuditOptions
 
 internal static class ReleaseAuditService
 {
-    private static Config ConfigFor(Config fallback, JobSpec? spec, int testIndex)
-    {
-        if (spec == null) return fallback;
-        if (testIndex < spec.ManualTests.Count) return spec.ManualTests[testIndex].Cfg;
-        int generatedIndex = testIndex - spec.ManualTests.Count;
-        if (spec.Groups.Count == 0) return spec.Cfg;
-        foreach (var group in spec.Groups)
-        {
-            if (generatedIndex < group.TestCount) return group.Cfg;
-            generatedIndex -= group.TestCount;
-        }
-        return fallback;
-    }
-
-    private static List<string> InvalidVariants(string input, Problem problem, Config config)
-    {
-        var candidates = new List<string>
-        {
-            "",
-            input + "OJGEN_INVALID_TRAILING_TOKEN\n",
-            "OJGEN_INVALID\n",
-        };
-        string trimmed = input.TrimEnd('\r', '\n');
-        int lastWhitespace = trimmed.LastIndexOfAny(new[] { ' ', '\t', '\r', '\n' });
-        if (lastWhitespace >= 0)
-            candidates.Add(trimmed[..(lastWhitespace + 1)].TrimEnd('\r', '\n') + "\n");
-
-        var distinct = new HashSet<string>(StringComparer.Ordinal);
-        return candidates.Where(candidate => distinct.Add(candidate) && problem.ValidateInput(candidate, config) != null)
-            .Take(3).ToList();
-    }
-
-    private static RunLimits Limits(Settings settings) => new()
-    {
-        TimeoutMs = Math.Clamp(settings.TimeoutMs, 1, 3600000),
-        MaxOutputBytes = (ulong)Math.Clamp(settings.MaxOutputMB, 1, 4096) << 20,
-        MemoryBytes = settings.MemoryMB <= 0 ? 0UL : (ulong)Math.Min(settings.MemoryMB, 1048576) << 20,
-    };
-
     private static string HashFile(string path)
     {
         using var stream = File.OpenRead(path);
@@ -245,7 +206,7 @@ internal static class ReleaseAuditService
                     string input = inputs[i];
                     string text = FileManager.ReadText(input);
                     inputSizes.Add(new FileInfo(input).Length);
-                    Config testConfig = ConfigFor(config, options.GeneratedSpec, i);
+                    Config testConfig = ReleaseAuditCommon.ConfigFor(config, options.GeneratedSpec, i);
                     if (problem.ValidateInput(text, testConfig) is { } validationError)
                     {
                         invalidInputs++;
@@ -414,7 +375,8 @@ internal static class ReleaseAuditService
                 report.Add(ReleaseAuditLevel.Error, "Validator", prepared.Error);
                 return;
             }
-            var limits = Limits(settings);
+            var limits = ReleaseAuditCommon.Limits(settings);
+            string runCwd = string.IsNullOrEmpty(prepared.WorkingDirectory) ? tempDir : prepared.WorkingDirectory;
             string stdout = Path.Combine(tempDir, "validator.stdout");
             string stderr = Path.Combine(tempDir, "validator.stderr");
             int rejected = 0;
@@ -422,7 +384,7 @@ internal static class ReleaseAuditService
             {
                 if (ct.IsCancellationRequested) { report.Cancelled = true; return; }
                 var argv = prepared.Argv.Concat(new[] { Path.GetFullPath(inputs[i]) }).ToList();
-                RunResult valid = ProcessRunner.Run(argv, Path.GetFullPath(inputs[i]), stdout, stderr, tempDir, limits, ct);
+                RunResult valid = ProcessRunner.Run(argv, Path.GetFullPath(inputs[i]), stdout, stderr, runCwd, limits, ct);
                 if (valid.Status != RunStatus.Ok && !(valid.Status == RunStatus.RuntimeError && valid.ExitCode == 42))
                 {
                     report.Add(ReleaseAuditLevel.Error, "Validator từ chối input hợp lệ", $"{Path.GetFileName(inputs[i])}: {ProcessRunner.StatusName(valid.Status)} — {valid.Message}");
@@ -432,8 +394,8 @@ internal static class ReleaseAuditService
             }
 
             string firstInput = FileManager.ReadText(inputs[0]);
-            Config firstConfig = ConfigFor(config, generatedSpec, 0);
-            var invalid = InvalidVariants(firstInput, problem, firstConfig);
+            Config firstConfig = ReleaseAuditCommon.ConfigFor(config, generatedSpec, 0);
+            var invalid = ReleaseAuditCommon.InvalidVariants(firstInput, problem, firstConfig);
             if (invalid.Count == 0)
             {
                 report.Add(ReleaseAuditLevel.Warning, "Validator hai chiều", "Không tạo được biến thể sai mà khuôn hiện có xác nhận; chỉ kiểm tra input hợp lệ.");
@@ -444,7 +406,7 @@ internal static class ReleaseAuditService
                 string invalidPath = Path.Combine(tempDir, "invalid_" + (i + 1) + ".inp");
                 File.WriteAllText(invalidPath, invalid[i], new UTF8Encoding(false));
                 var argv = prepared.Argv.Concat(new[] { invalidPath }).ToList();
-                RunResult invalidRun = ProcessRunner.Run(argv, invalidPath, stdout, stderr, tempDir, limits, ct);
+                RunResult invalidRun = ProcessRunner.Run(argv, invalidPath, stdout, stderr, runCwd, limits, ct);
                 if (invalidRun.Status == RunStatus.Ok || invalidRun.ExitCode == 42)
                 {
                     report.Add(ReleaseAuditLevel.Error, "Validator chấp nhận input sai", $"Biến thể sai #{i + 1} được validator chấp nhận (mã thoát 0).");
@@ -471,7 +433,7 @@ internal static class ReleaseAuditService
                     string casePath = Path.Combine(tempDir, "contract_" + contractPassed.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".inp");
                     File.WriteAllText(casePath, contractCase.Input, new UTF8Encoding(false));
                     var argv = prepared.Argv.Concat(new[] { casePath }).ToList();
-                    RunResult run = ProcessRunner.Run(argv, casePath, stdout, stderr, tempDir, limits, ct);
+                    RunResult run = ProcessRunner.Run(argv, casePath, stdout, stderr, runCwd, limits, ct);
                     if (run.Status == RunStatus.Cancelled) { report.Cancelled = true; return; }
                     bool accepted = run.Status == RunStatus.Ok || (run.Status == RunStatus.RuntimeError && run.ExitCode == 42);
                     bool decisive = accepted || (run.Status == RunStatus.RuntimeError && run.ExitCode != 0);

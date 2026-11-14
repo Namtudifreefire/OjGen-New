@@ -335,6 +335,7 @@ public partial class MainWindow : Window
         chkRebuild.IsChecked = project.Rebuild;
         chkResume.IsChecked = project.Resume;
         _testGroups = restoredGroups;
+        paramHost.IsEnabled = _testGroups.Count == 0;
         _requiredCoverageTags = project.TestPlan.RequiredCoverageTags?.ToList() ?? new();
         _manualTests = restoredManualTests;
         _authoringDocument = project.Statement?.Clone();
@@ -446,6 +447,7 @@ public partial class MainWindow : Window
             }
             if (Generator.ValidateFullConfig(problem, config) is { } configError) throw new InvalidDataException("Cấu hình preset không hợp lệ: " + configError);
             var groups = preset.TestPlan.Groups.Count > 0 ? preset.TestPlan.ToGroups(problem) : new List<TestGroupSpec>();
+            if (!ConfirmReplaceAuthoring("Áp dụng preset sẽ thay thế cấu hình, nhóm test, test tay và bản đề hiện tại.")) return;
             _loading = true;
             cmbAlgorithmTopic.SelectedItem = null;
             cmbMainCategory.SelectedItem = problem.MainCategory;
@@ -493,6 +495,7 @@ public partial class MainWindow : Window
         try
         {
             var project = OjProjectDocument.Load(dialog.FileName);
+            if (!ConfirmReplaceAuthoring("Mở dự án sẽ thay thế phiên soạn đề hiện tại.")) return;
             project.ProjectPath = dialog.FileName;
             ApplyProject(project);
             _activeProjectPath = dialog.FileName;
@@ -549,7 +552,7 @@ public partial class MainWindow : Window
         try
         {
             cmbMainCategory.SelectedItem = recommended.MainCategory;
-            SetSubtypeOptions(recommended.MainCategory, recommended.Id);
+            if (!SetSubtypeOptions(recommended.MainCategory, recommended.Id)) return;
             lblAlgorithmHint.Inlines.Clear();
             lblAlgorithmHint.Inlines.Add(new Run($"Khuôn input gợi ý: {recommended.Title}. "));
             if (topic.ExampleProblemUrl is { } exampleUrl && topic.ExampleProblem is { } exampleProblem)
@@ -572,30 +575,60 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetSubtypeOptions(string category, string preferredId)
+    private bool SetSubtypeOptions(string category, string preferredId)
     {
         var options = Problems.All.Where(p => p.MainCategory == category).ToList();
-        if (options.Count == 0) return;
+        if (options.Count == 0) return false;
 
         Problem selected = options.FirstOrDefault(p => p.Id == preferredId) ?? options[0];
         _updatingSubtypeList = true;
         cmbProblem.ItemsSource = options;
         cmbProblem.SelectedItem = selected;
         _updatingSubtypeList = false;
-        ApplyProblem(selected);
+        return ApplyProblem(selected);
     }
 
     private void CmbProblem_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_updatingSubtypeList || cmbProblem.SelectedItem is not Problem p) return;
+        if (_loading || _updatingSubtypeList || cmbProblem.SelectedItem is not Problem p) return;
         if (!_applyingAlgorithmTopic && cmbAlgorithmTopic.SelectedItem is AlgorithmTopic topic &&
             topic.RecommendedProblemId != p.Id)
             cmbAlgorithmTopic.SelectedItem = null;
         ApplyProblem(p);
     }
 
-    private void ApplyProblem(Problem p)
+    private bool ConfirmReplaceAuthoring(string message)
     {
+        if (_model == null || (_testGroups.Count == 0 && _manualTests.Count == 0 && _authoringDocument == null &&
+            _problemName.Length == 0 && _problemCode.Length == 0 && _lastGeneratedSpec == null)) return true;
+        return MessageBox.Show(this, message + "\n\nHãy lưu dự án trước nếu muốn giữ lại. Tiếp tục?",
+            "Xác nhận thay đổi", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+    }
+
+    private void RestoreProblemSelection()
+    {
+        if (_model == null) return;
+        bool previousLoading = _loading;
+        _loading = true;
+        try
+        {
+            cmbAlgorithmTopic.SelectedItem = null;
+            cmbMainCategory.SelectedItem = _model.Problem.MainCategory;
+            _updatingSubtypeList = true;
+            cmbProblem.ItemsSource = Problems.All.Where(item => item.MainCategory == _model.Problem.MainCategory).ToList();
+            cmbProblem.SelectedItem = _model.Problem;
+        }
+        finally { _updatingSubtypeList = false; _loading = previousLoading; }
+    }
+
+    private bool ApplyProblem(Problem p)
+    {
+        if (!_loading && _model?.Problem.Id == p.Id) return true;
+        if (!_loading && !ConfirmReplaceAuthoring("Đổi khuôn sẽ xóa tên bài, nhóm test, test tay và bản đề hiện tại."))
+        {
+            RestoreProblemSelection();
+            return false;
+        }
         _problemName = "";
         _problemCode = "";
         _testGroups.Clear();
@@ -611,6 +644,7 @@ public partial class MainWindow : Window
         _lastGeneratedResult = null;
         _lastGeneratedSpec = null;
         SetProblemModel(p, p.DefaultConfig());
+        return true;
     }
 
     private void SetProblemModel(Problem p, Config config)
@@ -680,6 +714,8 @@ public partial class MainWindow : Window
         string oldProblemId = _model.Problem.Id;
         var dialog = new ProblemSetupWindow(_model.Problem, _model.Effective(), _problemName, _problemCode, txtSolution.Text) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } setup) return;
+        if ((_testGroups.Count > 0 || setup.Problem.Id != oldProblemId) &&
+            !ConfirmReplaceAuthoring("Thay đổi thiết lập sẽ xóa các nhóm test hiện tại; đổi khuôn cũng xóa test tay và bản đề.")) return;
 
         _loading = true;
         cmbMainCategory.SelectedItem = setup.Problem.MainCategory;
@@ -764,10 +800,20 @@ public partial class MainWindow : Window
         result.ShowDialog();
     }
 
-    private bool OpenStatementEditor()
+    private bool OpenStatementEditor(bool useGeneratedSamples = false)
     {
         if (_model == null) return false;
-        var samples = _manualTests.Select(test => test.Clone()).ToList();
+        var samples = (useGeneratedSamples && _lastGeneratedSpec != null ? _lastGeneratedSpec.ManualTests : _manualTests)
+            .Select(test => test.Clone()).ToList();
+        if (useGeneratedSamples && _lastGeneratedResult != null && Directory.Exists(_lastGeneratedResult.OutDir))
+        {
+            var inputs = FileManager.ListFilesWithExt(_lastGeneratedResult.OutDir, ".inp");
+            for (int i = 0; i < Math.Min(samples.Count, inputs.Count); i++)
+            {
+                string output = Path.ChangeExtension(inputs[i], ".out");
+                if (File.Exists(output)) samples[i].GeneratedOutput = FileManager.ReadText(output);
+            }
+        }
         var editor = new StatementEditorWindow(_model.Problem, _model.Effective(), _problemName, _problemCode,
             samples, _authoringDocument)
         { Owner = this };
@@ -789,8 +835,8 @@ public partial class MainWindow : Window
     private async void MnuPackage_Click(object sender, RoutedEventArgs e)
     {
         if (_running || _reviewing || _model == null) return;
-        if (_authoringDocument == null && !OpenStatementEditor()) return;
-        var samples = _manualTests.Where(test => test.IsSample).ToList();
+        if (_authoringDocument == null && !OpenStatementEditor(useGeneratedSamples: true)) return;
+        var samples = (_lastGeneratedSpec?.ManualTests ?? _manualTests).Where(test => test.IsSample).ToList();
         string testDirectory = _lastGeneratedResult?.OutDir ?? "";
         int testCount = _lastGeneratedResult?.InputCount ?? 0;
         int expectedTestCount = _lastGeneratedSpec?.TestCount ?? testCount;
@@ -805,9 +851,13 @@ public partial class MainWindow : Window
         var auditDocument = _authoringDocument.Clone();
         var auditProblem = _model.Problem;
         var auditConfig = _model.Effective();
-        var auditManualTests = _manualTests.Select(test => test.Clone()).ToList();
+        bool sameGeneratedDirectory = options.IncludeTests && !string.IsNullOrWhiteSpace(options.TestDirectory) && _lastGeneratedSpec != null && _lastGeneratedResult != null && !string.IsNullOrWhiteSpace(_lastGeneratedResult.OutDir) &&
+            string.Equals(Path.GetFullPath(options.TestDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(_lastGeneratedResult.OutDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+        var auditManualTests = (options.IncludeTests ? (sameGeneratedDirectory ? _lastGeneratedSpec!.ManualTests : new List<ManualTestSpec>()) : _manualTests)
+            .Select(test => test.Clone()).ToList();
         var auditSettings = _st.Clone();
-        var generatedSpec = _lastGeneratedSpec == null ? null : CloneJobSpec(_lastGeneratedSpec);
+        var generatedSpec = sameGeneratedDirectory ? CloneJobSpec(_lastGeneratedSpec!) : null;
         ulong? recordedTestSeed = _lastGeneratedResult?.Seed;
         ulong auditSeed = recordedTestSeed ?? Generator.RandomSeed();
         ReleaseAuditReport? audit = null;
@@ -815,7 +865,7 @@ public partial class MainWindow : Window
         {
             IncludeTests = options.IncludeTests,
             TestDirectory = options.TestDirectory,
-            ExpectedTestCount = options.IncludeTests ? expectedTestCount : 0,
+            ExpectedTestCount = sameGeneratedDirectory ? expectedTestCount : 0,
             ReferenceSolution = options.ReferenceSolution,
             ValidatorPath = options.ValidatorPath,
             CheckerPath = options.CheckerPath,

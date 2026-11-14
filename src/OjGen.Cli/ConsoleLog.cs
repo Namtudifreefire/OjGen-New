@@ -12,7 +12,7 @@ internal sealed class ConsoleLog : IJobLog
     public void Progress(string phase, int done, int total)
     {
         // Chỉ hiển thị tiến độ sinh input ở console thật (giống bản C++); các giai đoạn khác đã có dòng riêng.
-        if (!_live || phase != "Sinh input") return;
+        if (!_live || !(phase == "Sinh input" || phase.StartsWith("Sinh input · ", StringComparison.Ordinal))) return;
         if (done == total || done % 10 == 0)
         {
             Console.Out.Write($"\r  Đã sinh {done}/{total} file input");

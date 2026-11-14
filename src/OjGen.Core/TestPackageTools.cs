@@ -121,7 +121,7 @@ public static class TestPackageTools
             throw new InvalidDataException("Prefix chỉ được chứa chữ ASCII, số, '_' và '-'.");
         var items = ListTests(Path.GetFullPath(source));
         var inputs = items.Where(p => p.Key.EndsWith(".inp", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase).ToList();
+            .OrderBy(p => p.Key, FileManager.NaturalComparer).ToList();
         if (inputs.Count == 0) throw new InvalidDataException("Nguồn không có input .inp hoặc .in.");
         if (inputs.Count > MaxTests) throw new InvalidDataException($"Nguồn có quá {MaxTests} input.");
         long totalBytes = 0;
@@ -245,7 +245,7 @@ public static class TestPackageTools
 
         var items = ListTests(source);
         var inputs = items.Where(pair => pair.Key.EndsWith(".inp", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase).ToList();
+            .OrderBy(pair => pair.Key, FileManager.NaturalComparer).ToList();
         if (inputs.Count == 0) throw new InvalidDataException("Không tìm thấy input test trong thư mục nguồn.");
         foreach (var input in inputs)
             if (!items.ContainsKey(input.Key[..^4] + ".out")) throw new InvalidDataException("Thiếu output cho test " + input.Key[..^4] + ".");

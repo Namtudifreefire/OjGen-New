@@ -17,6 +17,7 @@ internal static class ConstraintConsistencyChecker
     private static readonly Regex Range = new($@"(?<lo>{Number})\s*(?:<=|≤)\s*(?<var>[A-Za-z][A-Za-z0-9]*)\s*(?:<=|≤)\s*(?<hi>{Number})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex Upper = new($@"(?<var>[A-Za-z][A-Za-z0-9]*)\s*(?:<=|≤)\s*(?<hi>{Number})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex Lower = new($@"(?<lo>{Number})\s*(?:<=|≤)\s*(?<var>[A-Za-z][A-Za-z0-9]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex AbsoluteUpper = new($@"\|\s*(?<var>[A-Za-z][A-Za-z0-9]*)\s*\|\s*(?:<=|≤)\s*(?<hi>{Number})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Dictionary<string, (string Min, string Max)> Aliases = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -53,6 +54,12 @@ internal static class ConstraintConsistencyChecker
         if (additionalConfigs != null) configs.AddRange(additionalConfigs);
         var bounds = new List<(string Variable, long? Lower, long? Upper)>();
         var occupied = new HashSet<(int Start, int Length)>();
+        foreach (Match match in AbsoluteUpper.Matches(text))
+        {
+            if (!TryNumber(match.Groups["hi"].Value, out long hi) || hi < 0) continue;
+            bounds.Add((match.Groups["var"].Value, -hi, hi));
+            occupied.Add((match.Index, match.Length));
+        }
         foreach (Match match in Range.Matches(text))
         {
             if (!TryNumber(match.Groups["lo"].Value, out long lo) || !TryNumber(match.Groups["hi"].Value, out long hi)) continue;
@@ -72,13 +79,27 @@ internal static class ConstraintConsistencyChecker
 
         foreach (var bound in bounds)
         {
-            if (!Aliases.TryGetValue(bound.Variable, out var keys)) continue;
+            string variable = bound.Variable.ToLowerInvariant();
+            (string Min, string Max) keys;
+            if (variable == "w" && problem.Id == "graph") keys = ("minW", "maxW");
+            else if (variable is "w" or "h")
+            {
+                if (problem.Id is not ("grid" or "matrix")) continue;
+                keys = Aliases[variable];
+            }
+            else if (variable == "t")
+            {
+                if (problem.Id != "multi_test") continue;
+                keys = Aliases[variable];
+            }
+            else if (!Aliases.TryGetValue(variable, out keys)) continue;
             var minSpec = problem.Params.FirstOrDefault(param => string.Equals(param.Key, keys.Min, StringComparison.OrdinalIgnoreCase));
             var maxSpec = problem.Params.FirstOrDefault(param => string.Equals(param.Key, keys.Max, StringComparison.OrdinalIgnoreCase));
             if (minSpec == null || maxSpec == null) continue;
             result.ParsedBounds++;
             foreach (Config config in configs)
             {
+                if (variable == "w" && problem.Id == "graph" && !config.B("weighted")) continue;
                 long actualMin = config.I(minSpec.Key), actualMax = config.I(maxSpec.Key);
                 if (problem is GraphProblem graph && bound.Variable.Equals("m", StringComparison.OrdinalIgnoreCase) &&
                     config.I("density") != 0 && graph.TryGetEffectiveEdgeBounds(config, out long effectiveMin, out long effectiveMax))

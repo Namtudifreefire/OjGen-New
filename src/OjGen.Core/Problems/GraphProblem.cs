@@ -8,7 +8,7 @@
 //   directed  = 1 : có hướng (u -> v)
 //   simple    = 1 : đồ thị đơn - không khuyên (u = v), không cạnh lặp
 //   connected = 1 : liên thông (có hướng: liên thông yếu), cần m >= n - 1
-//   stronglyConnected = 1 : đồ thị có hướng liên thông mạnh, cần m >= n
+//   stronglyConnected = 1 : đồ thị có hướng liên thông mạnh, cần m >= n khi n > 1
 //   dag       = 1 : đồ thị có hướng không chu trình
 //   bipartite = 1 : mỗi cạnh nối hai phía khác nhau
 //   weighted  = 1 : mỗi cạnh có trọng số w trong [minW, maxW]
@@ -30,7 +30,7 @@ public sealed class GraphProblem : Problem
         "m dòng tiếp: u v (hoặc u v w khi weighted = 1), đỉnh đánh số 1..n.\n" +
         "  directed = 1: có hướng.  simple = 1: không khuyên, không cạnh lặp.\n" +
         "  connected = 1: liên thông (có hướng: liên thông yếu), cần m >= n - 1.\n" +
-        "  stronglyConnected = 1: đồ thị có hướng liên thông mạnh, cần m >= n; không kết hợp DAG/hai phía.\n" +
+        "  stronglyConnected = 1: đồ thị có hướng liên thông mạnh, cần m >= n khi n > 1; không kết hợp DAG/hai phía.\n" +
         "  dag = 1: có hướng không chu trình.  bipartite = 1: cạnh chỉ nối hai phía.\n" +
         "  density = 1/2/3: thưa/vừa/dày, tự chọn m theo sức chứa hợp lệ; chỉ dùng với đồ thị đơn.\n" +
         "  Số cạnh mỗi test tối đa 1.000.000; chế độ mật độ vừa/dày chỉ dùng được với n đủ nhỏ.\n" +
@@ -114,7 +114,7 @@ public sealed class GraphProblem : Problem
         // Trần số cạnh mỗi test: với n lớn, sức chứa có thể lên hàng tỷ cạnh. Không chặn thì
         // (int)m bị tràn hoặc cạn bộ nhớ. Nếu low > trần thì EdgeRange trả về false và n đó bị loại.
         long max = capacity > (ulong)MaxE ? MaxE : (long)capacity;
-        long required = c.B("stronglyConnected") ? n : c.B("connected") ? Math.Max(0, n - 1) : 0;
+        long required = c.B("stronglyConnected") && n > 1 ? n : c.B("connected") ? Math.Max(0, n - 1) : 0;
         long low, high;
         switch (c.I("density"))
         {
@@ -141,7 +141,8 @@ public sealed class GraphProblem : Problem
     {
         (lo, hi) = c.I("density") == 0 ? (c.I("minM"), c.I("maxM")) : DensityEdges(c, n);
         if (c.B("connected")) lo = Math.Max(lo, n - 1);
-        if (c.B("stronglyConnected")) lo = Math.Max(lo, n);
+        if (c.B("stronglyConnected") && n > 1) lo = Math.Max(lo, n);
+        if (n == 1) hi = Math.Min(hi, 0); // Khuyên không được hỗ trợ, kể cả đa đồ thị.
         if (c.B("simple"))
         {
             ulong me = MaxEdgesAllowed(c, n);
@@ -367,7 +368,7 @@ public sealed class GraphProblem : Problem
             return true;
         }
 
-        if (stronglyConnected)
+        if (stronglyConnected && vertexCount > 1)
         {
             for (int i = 0; i < order.Count; i++)
                 if (!TryAdd(order[i], order[(i + 1) % order.Count]))

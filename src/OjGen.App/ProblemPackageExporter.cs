@@ -167,6 +167,13 @@ internal static class ProblemPackageExporter
         {
             testInputs = FileManager.ListFilesWithExt(options.TestDirectory, ".inp");
             if (testInputs.Count == 0) throw new InvalidDataException("Không còn input để đưa vào gói.");
+            if (options.GeneratedSpec != null)
+            {
+                if (manualTests.Count > testInputs.Count) throw new InvalidDataException("Bộ test thiếu test nhập tay đã sinh.");
+                for (int i = 0; i < manualTests.Count; i++)
+                    if (!string.Equals(FileManager.ReadText(testInputs[i]), manualTests[i].Input, StringComparison.Ordinal))
+                        throw new InvalidDataException("Test nhập tay không còn khớp bộ test đã sinh: " + Path.GetFileName(testInputs[i]));
+            }
             foreach (string input in testInputs)
                 if (!File.Exists(Path.ChangeExtension(input, ".out")))
                     throw new InvalidDataException($"Test {Path.GetFileName(input)} bị thiếu output sau khi kiểm định.");
@@ -251,7 +258,7 @@ internal static class ProblemPackageExporter
                 string stem = "sample" + (i + 1).ToString("00");
                 AtomicFile.WriteAllText(Path.Combine(samplesDirectory, stem + ".inp"), sample.Input, new UTF8Encoding(false));
                 string sampleOutput = sample.ExpectedOutput.Length > 0 ? sample.ExpectedOutput : sample.GeneratedOutput;
-                if (sampleOutput.Length == 0 && manualIndex < testInputs.Count)
+                if (manualIndex < testInputs.Count)
                 {
                     string sourceOutput = Path.ChangeExtension(testInputs[manualIndex], ".out");
                     if (File.Exists(sourceOutput)) sampleOutput = FileManager.ReadText(sourceOutput);

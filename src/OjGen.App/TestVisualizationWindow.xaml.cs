@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using OjGen.Core;
 
 namespace OjGen.Gui;
 
@@ -32,22 +33,10 @@ public partial class TestVisualizationWindow : Window
         if (_lines.Length == 0) { lblSummary.Text = "Input rỗng."; return; }
         var tokenLines = Tokens(_lines);
         string mode = SelectedMode();
-        if (mode == "Tự nhận diện") mode = Detect(tokenLines);
+        if (mode == "Tự nhận diện") mode = TestVisualizationDetector.Detect(tokenLines);
         if (mode == "Đồ thị / cây" && DrawGraph(tokenLines)) return;
         if (mode == "Lưới" && DrawGrid(tokenLines)) return;
         DrawDistribution();
-    }
-    private string Detect(string[][] tokens)
-    {
-        if (tokens[0].Length >= 2 && int.TryParse(tokens[0][0], out int a) && int.TryParse(tokens[0][1], out int b) && a is > 0 and <= 500 && b is >= 0 and <= 10000)
-        {
-            if (tokens.Length > 1 && tokens.Skip(1).Take(Math.Min(b, tokens.Length - 1)).All(row => row.Length == 2 && row.All(token => int.TryParse(token, out _)))) return "Đồ thị / cây";
-            if (tokens.Length >= a + 1 && tokens.Skip(1).Take(a).All(row => row.Length == b && row.All(token => token.Length == 1))) return "Lưới";
-        }
-        if (tokens[0].Length == 1 && int.TryParse(tokens[0][0], out int treeNodes) && treeNodes is > 1 and <= 1000 &&
-            tokens.Length >= treeNodes && tokens.Skip(1).Take(treeNodes - 1).All(row => row.Length >= 2 && row.Take(2).All(token => int.TryParse(token, out _))))
-            return "Đồ thị / cây";
-        return "Phân phối số";
     }
     private bool DrawGraph(string[][] rows)
     {

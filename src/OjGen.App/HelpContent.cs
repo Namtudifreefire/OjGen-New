@@ -42,7 +42,7 @@ internal static class HelpContent
    - Kiểm kê test: lọc, đổi tên/nhóm, xem test trùng/thiếu output, xác thực input, chạy checker trên output cũ, trực quan hóa và xuất CSV.
    - Ma trận lời giải: chạy nhiều lời giải trên cùng bộ test, chọn lời giải chuẩn và xem test phân biệt; so sánh token sau khi chuẩn hóa khoảng trắng.
    - Hàng đợi GUI tự lưu/khôi phục; có thể đổi thứ tự, seed, thư mục output, kế hoạch nhóm và giữ mục thất bại để sửa/chạy lại.
-   - Nén ZIP thư mục test có sẵn; Kiểm tra nội bộ (selftest): chạy ~240 phép kiểm tra các dạng bài, bộ xác thực, seed và ZIP.
+   - Nén ZIP thư mục test có sẵn; Kiểm tra nội bộ (selftest): kiểm tra các dạng bài, bộ xác thực, seed và ZIP.
 
 7. SOẠN VÀ ĐÓNG GÓI ĐỀ
    - Bản nháp đề được lưu cạnh hồ sơ, có phần mô tả, input, output, ràng buộc và ví dụ; preview hỗ trợ tiêu đề, danh sách, bảng, code, liên kết, ảnh HTTPS và cú pháp toán cơ bản.

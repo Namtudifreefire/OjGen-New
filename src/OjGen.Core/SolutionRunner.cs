@@ -353,15 +353,8 @@ public static class SolutionRunner
         string exeName = "sol_" + tag + (OperatingSystem.IsWindows() ? ".exe" : "");
         string exe = Path.GetFullPath(Path.Combine(workDir, exeName));
 
-        if (!forceRebuild && File.Exists(exe))
-        {
-            ps.Ok = true;
-            ps.Argv = new List<string> { exe };
-            ps.Compiled = true;
-            ps.Cached = true;
-            log.Line("Mã nguồn không đổi so với lần biên dịch trước: dùng lại " + exeName);
-            return ps;
-        }
+        // Header dependencies and compiler options may refer to arbitrary files. Until the
+        // compiler's full dependency graph is tracked, always rebuild to avoid stale output.
 
         // Biên dịch trong thư mục làm việc, dùng bản sao mã nguồn có tên ASCII và đường dẫn tương đối:
         // tránh lỗi với đường dẫn có dấu tiếng Việt ở các bản g++ MinGW cũ.
@@ -373,7 +366,7 @@ public static class SolutionRunner
         args.AddRange(Util.SplitArgs(flags));
         args.Add("-DOJGEN");
         // Cho phép #include "file.h" nằm cạnh mã nguồn gốc.
-        if (code.Contains("#include \"", StringComparison.Ordinal)) args.Add("-I" + (Path.GetDirectoryName(src) ?? "."));
+        args.Add("-I" + (Path.GetDirectoryName(src) ?? "."));
         args.Add("-o");
         args.Add(exeName);
 
@@ -685,9 +678,6 @@ public static class SolutionRunner
                     if (!FileManager.WriteFile(finalOut, data, out err)) reason = err ?? "";
                     else
                     {
-                        rep.Ok++;
-                        outHashes.Add(Util.Fnv1a(data));
-                        if (data.Length == 0) emptyOutputs++;
                         if (resume)
                         {
                             checkpoint!.Outputs[Path.GetFileName(finalOut)] = new OutputCheckpointEntry
@@ -695,7 +685,13 @@ public static class SolutionRunner
                             if (!SaveOutputCheckpoint(checkpointPath, checkpoint, out string? checkpointError))
                                 reason = checkpointError ?? "Không lưu được checkpoint output.";
                         }
-                        log.Line($"OK ({rr.ElapsedMs} ms)");
+                        if (reason.Length == 0)
+                        {
+                            rep.Ok++;
+                            outHashes.Add(Util.Fnv1a(data));
+                            if (data.Length == 0) emptyOutputs++;
+                            log.Line($"OK ({rr.ElapsedMs} ms)");
+                        }
                     }
                 }
             }
