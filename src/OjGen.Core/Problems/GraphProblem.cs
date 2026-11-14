@@ -33,6 +33,7 @@ public sealed class GraphProblem : Problem
         "  stronglyConnected = 1: đồ thị có hướng liên thông mạnh, cần m >= n; không kết hợp DAG/hai phía.\n" +
         "  dag = 1: có hướng không chu trình.  bipartite = 1: cạnh chỉ nối hai phía.\n" +
         "  density = 1/2/3: thưa/vừa/dày, tự chọn m theo sức chứa hợp lệ; chỉ dùng với đồ thị đơn.\n" +
+        "  Số cạnh mỗi test tối đa 1.000.000; chế độ mật độ vừa/dày chỉ dùng được với n đủ nhỏ.\n" +
         "  Đồ thị đơn vô hướng n đỉnh có tối đa n(n-1)/2 cạnh; có hướng tối đa n(n-1).\n" +
         "Ví dụ (vô hướng, có trọng số):\n  4 3\n  1 2 7\n  2 4 3\n  3 1 10\n";
 
@@ -110,7 +111,9 @@ public sealed class GraphProblem : Problem
     private static (long Low, long High) DensityEdges(Config c, long n)
     {
         ulong capacity = MaxEdgesAllowed(c, n);
-        long max = checked((long)capacity);
+        // Trần số cạnh mỗi test: với n lớn, sức chứa có thể lên hàng tỷ cạnh. Không chặn thì
+        // (int)m bị tràn hoặc cạn bộ nhớ. Nếu low > trần thì EdgeRange trả về false và n đó bị loại.
+        long max = capacity > (ulong)MaxE ? MaxE : (long)capacity;
         long required = c.B("stronglyConnected") ? n : c.B("connected") ? Math.Max(0, n - 1) : 0;
         long low, high;
         switch (c.I("density"))
@@ -177,7 +180,8 @@ public sealed class GraphProblem : Problem
             if (EdgeRange(c, n, out _, out _)) return null;
         string why = c.I("density") == 0
             ? "Không có số đỉnh n nào trong [minN, maxN] cho phép số cạnh trong [minM, maxM]."
-            : "Không có số đỉnh n nào thỏa chế độ mật độ cạnh và các ràng buộc đã chọn.";
+            : "Không có số đỉnh n nào thỏa chế độ mật độ cạnh và các ràng buộc đã chọn " +
+              $"(mỗi test tối đa {Util.LL(MaxE)} cạnh; mật độ vừa/dày cần n đủ nhỏ).";
         if (c.B("simple"))
             why += "\n  Đồ thị đơn " + (c.B("directed") ? "có hướng" : "vô hướng") + " với maxN = " +
                    Util.LL(c.I("maxN")) + " đỉnh có tối đa " +

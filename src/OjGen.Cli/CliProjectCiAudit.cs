@@ -45,6 +45,44 @@ internal static class CliProjectCiAudit
     }
     private static string Resolve(string root, string path) => string.IsNullOrWhiteSpace(path) ? "" : Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(root, path));
 
+    /// <summary>
+    /// Đọc danh sách test nhập tay của lần sinh gần nhất. ProjectManualTest là kiểu internal của GUI nên CLI
+    /// đọc thẳng JSON. Thiếu bước này thì audit tái lập sinh lại thiếu input và ConfigFor bị lệch nhóm.
+    /// </summary>
+    private static List<ManualTestSpec> ReadManualTests(JsonElement array, Problem problem)
+    {
+        var result = new List<ManualTestSpec>();
+        if (array.ValueKind != JsonValueKind.Array) return result;
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("Project có test nhập tay rỗng hoặc sai định dạng.");
+            var ints = LongMap(Property(item, "Ints"));
+            var texts = StringMap(Property(item, "Texts"));
+            var config = problem.DefaultConfig();
+            foreach (var parameter in problem.Params)
+            {
+                if (parameter.Type == ParamType.Text)
+                {
+                    if (texts.TryGetValue(parameter.Key, out string? text)) config.SetText(parameter.Key, text);
+                }
+                else if (ints.TryGetValue(parameter.Key, out long value)) config.Set(parameter.Key, value);
+            }
+            string configName = String(item, "ConfigName");
+            result.Add(new ManualTestSpec
+            {
+                Name = String(item, "Name"),
+                Input = ManualTestSpec.NormalizeInput(String(item, "Input")),
+                ExpectedOutput = String(item, "ExpectedOutput"),
+                GeneratedOutput = String(item, "GeneratedOutput"),
+                IsSample = Property(item, "IsSample").ValueKind == JsonValueKind.True,
+                ConfigName = configName.Length > 0 ? configName : "Cấu hình chung",
+                Cfg = config,
+            });
+        }
+        return result;
+    }
+
     public static CiProjectAuditOutcome Run(string projectPath, IJobLog log)
     {
         string fullProject = Path.GetFullPath(projectPath);
@@ -85,7 +123,8 @@ internal static class CliProjectCiAudit
                 requiredTags = savedTags.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String)
                     .Select(value => value.GetString() ?? "").Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (expected < 1) expected = FileManager.ListFilesWithExt(testSource, ".inp").Count;
-            int manualCount = Property(root, "LastGeneratedManualTests") is { ValueKind: JsonValueKind.Array } manualArray ? manualArray.GetArrayLength() : 0;
+            var manualTests = ReadManualTests(Property(root, "LastGeneratedManualTests"), problem);
+            int manualCount = manualTests.Count;
             int generatedCount = Math.Max(0, expected - manualCount);
             if (groups.Count > 0 && groups.Sum(group => group.TestCount) != generatedCount)
                 throw new InvalidDataException("Số test của kế hoạch đã lưu không khớp số test sinh trong project.");
@@ -119,17 +158,36 @@ internal static class CliProjectCiAudit
             ulong seed = ULong(root, "LastGeneratedSeed");
             var generatedSpec = new JobSpec
             {
-                Problem = problem, Cfg = config.Clone(), TestCount = expected, GeneratedTestCount = generatedCount, Seed = seed,
-                OutDir = tempTests, Groups = groups, RequiredCoverageTags = requiredTags,
+                Problem = problem,
+                Cfg = config.Clone(),
+                TestCount = expected,
+                GeneratedTestCount = generatedCount,
+                Seed = seed,
+                OutDir = tempTests,
+                Groups = groups,
+                RequiredCoverageTags = requiredTags,
+                ManualTests = manualTests,
             };
             Settings settings = Settings.Load(null, out _);
             var options = new CliAuditOptions
             {
-                Problem = problem, Config = config, Settings = settings, TestDirectory = tempTests, ExpectedTestCount = expected,
-                ReferenceSolution = reference, ValidatorPath = validator, CheckerPath = checker,
+                Problem = problem,
+                Config = config,
+                Settings = settings,
+                TestDirectory = tempTests,
+                ExpectedTestCount = expected,
+                ReferenceSolution = reference,
+                ValidatorPath = validator,
+                CheckerPath = checker,
                 CheckerArguments = String(package, "CheckerArguments") is { Length: > 0 } checkerArgs ? checkerArgs : "{input} {output} {answer}",
-                CheckerTimeoutMs = Int(package, "CheckerTimeoutMs"), ContractSuitePath = contractSuite, CandidateSolution = candidate,
-                StatementPath = statementPath, Seed = seed, DifferentialSeed = seed, GeneratedSpec = generatedSpec, RequiredCoverageTags = requiredTags,
+                CheckerTimeoutMs = Int(package, "CheckerTimeoutMs"),
+                ContractSuitePath = contractSuite,
+                CandidateSolution = candidate,
+                StatementPath = statementPath,
+                Seed = seed,
+                DifferentialSeed = seed,
+                GeneratedSpec = generatedSpec,
+                RequiredCoverageTags = requiredTags,
             };
             CliAuditReport audit = CliReleaseAudit.Run(options, log);
             foreach (string item in resourceErrors) audit.Add(CliAuditLevel.Error, "Statement resource", item);
@@ -137,9 +195,12 @@ internal static class CliProjectCiAudit
             int exit = audit.HasErrors ? 2 : audit.WarningCount > 0 ? 1 : 0;
             var report = new
             {
-                exitCode = exit, passed = !audit.HasErrors, warningCount = audit.WarningCount,
+                exitCode = exit,
+                passed = !audit.HasErrors,
+                warningCount = audit.WarningCount,
                 items = audit.Items.Select(item => new { level = item.Level.ToString(), item.Title, item.Detail }).ToList(),
-                sourceProject = fullProject, sourceTests = testSource,
+                sourceProject = fullProject,
+                sourceTests = testSource,
             };
             return new(exit, audit.ToText(), report);
         }

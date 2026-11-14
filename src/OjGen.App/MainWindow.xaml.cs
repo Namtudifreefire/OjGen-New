@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System;
 using System.IO;
 using System.Windows;
@@ -84,10 +85,12 @@ public partial class MainWindow : Window
 
         string? warn = ((App)Application.Current).SettingsWarning;
         if (!string.IsNullOrEmpty(warn)) _log.Line(warn);
-        _projectAutosaveTimer.Tick += (_, _) => SaveProjectSnapshot(_projectAutosavePath, quiet: true);
-        _projectAutosaveTimer.Start();
+        _projectAutosaveTimer.Tick += (_, _) => PersistAutosave(force: false);
         RestoreAutosaveOnStartup();
         RestoreQueue();
+        // Chỉ bắt đầu ghi autosave SAU khi đã xử lý phiên cũ. Nếu Start() trước hộp thoại khôi phục,
+        // sau 10 giây timer sẽ ghi đè session.ojproject bằng phiên trống trong lúc người dùng còn đang chọn.
+        _projectAutosaveTimer.Start();
     }
 
     private OjProjectDocument? CaptureProject()
@@ -143,18 +146,96 @@ public partial class MainWindow : Window
         }
     }
 
+    // ============================================================ AUTOSAVE / KHÔI PHỤC PHIÊN
+
+    private void DeleteAutosave()
+    {
+        try { if (File.Exists(_projectAutosavePath)) File.Delete(_projectAutosavePath); } catch (Exception) { }
+    }
+
+    /// <summary>Giữ bản sao file tự lưu khi không khôi phục được, để autosave sau đó không ghi đè mất dữ liệu.</summary>
+    private void BackupAutosave()
+    {
+        try { File.Copy(_projectAutosavePath, _projectAutosavePath + ".failed", overwrite: true); } catch (Exception) { }
+    }
+
+    /// <summary>Phiên có gì đáng giữ không: đã đặt tên/mã, có test tay, kế hoạch, lần sinh trước, seed hoặc tham số khác mặc định.</summary>
+    private static bool IsMeaningfulSession(OjProjectDocument project)
+    {
+        if (!string.IsNullOrWhiteSpace(project.ProblemName) || !string.IsNullOrWhiteSpace(project.ProblemCode)) return true;
+        if (project.Statement != null || project.ManualTests.Count > 0 || project.TestPlan.Groups.Count > 0 ||
+            project.LastGeneratedCount > 0 || !string.IsNullOrWhiteSpace(project.Seed)) return true;
+        Problem? problem = Problems.Find(project.ProblemId);
+        if (problem == null) return false;
+        Config defaults = problem.DefaultConfig();
+        foreach (var parameter in problem.Params)
+        {
+            if (parameter.Type == ParamType.Text)
+            {
+                if (project.Texts.TryGetValue(parameter.Key, out string? text) && text != defaults.T(parameter.Key)) return true;
+            }
+            else if (project.Ints.TryGetValue(parameter.Key, out long value) && value != defaults.I(parameter.Key)) return true;
+        }
+        return false;
+    }
+
+    private static string NormalizedProjectJson(OjProjectDocument document)
+    {
+        var copy = JsonSerializer.Deserialize<OjProjectDocument>(JsonSerializer.Serialize(document))!;
+        copy.SavedUtc = default;
+        copy.ProjectPath = "";
+        return JsonSerializer.Serialize(copy);
+    }
+
+    /// <summary>Đúng khi phiên đang giữ trùng khớp file .ojproject đã lưu. Sai lệch nhỏ chỉ khiến giữ autosave (an toàn).</summary>
+    private static bool MatchesSavedProject(OjProjectDocument current)
+    {
+        if (current.ProjectPath.Length == 0 || !File.Exists(current.ProjectPath)) return false;
+        try { return NormalizedProjectJson(OjProjectDocument.Load(current.ProjectPath)) == NormalizedProjectJson(current); }
+        catch (Exception) { return false; }
+    }
+
+    /// <summary>
+    /// Ghi autosave nếu phiên đáng giữ và chưa được lưu vào file dự án; ngược lại xóa file tự lưu cũ
+    /// để lần mở sau không hỏi khôi phục một phiên trống hoặc đã lưu.
+    /// </summary>
+    private void PersistAutosave(bool force)
+    {
+        if (!force && (_running || _reviewing)) return;
+        try
+        {
+            OjProjectDocument? project = CaptureProject();
+            if (project == null) return;
+            if (IsMeaningfulSession(project) && !MatchesSavedProject(project)) project.Save(_projectAutosavePath);
+            else DeleteAutosave();
+        }
+        catch (Exception ex) { _log.Line("! Không tự lưu được dự án: " + ex.Message); }
+    }
+
     private void RestoreAutosaveOnStartup()
     {
         if (!File.Exists(_projectAutosavePath)) return;
-        var answer = MessageBox.Show(this, "OjGen tìm thấy phiên soạn đề đã tự lưu. Khôi phục phiên này?",
-            "Khôi phục dự án", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes);
-        if (answer != MessageBoxResult.Yes)
+        OjProjectDocument snapshot;
+        try { snapshot = OjProjectDocument.Load(_projectAutosavePath); }
+        catch (Exception ex)
         {
-            try { File.Delete(_projectAutosavePath); } catch (Exception) { }
+            BackupAutosave();
+            DeleteAutosave();
+            _log.Line($"! File tự lưu bị hỏng, đã giữ bản sao {_projectAutosavePath}.failed: {ex.Message}");
             return;
         }
-        try { ApplyProject(OjProjectDocument.Load(_projectAutosavePath)); _log.Line("Đã khôi phục phiên soạn đề tự lưu."); }
-        catch (Exception ex) { MessageBox.Show(this, "Không khôi phục được phiên tự lưu: " + ex.Message, "Lỗi khôi phục", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        if (!IsMeaningfulSession(snapshot) || MatchesSavedProject(snapshot)) { DeleteAutosave(); return; }
+
+        var answer = MessageBox.Show(this, "OjGen tìm thấy phiên soạn đề đã tự lưu. Khôi phục phiên này?",
+            "Khôi phục dự án", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes);
+        if (answer != MessageBoxResult.Yes) { DeleteAutosave(); return; }
+        try { ApplyProject(snapshot); _log.Line("Đã khôi phục phiên soạn đề tự lưu."); }
+        catch (Exception ex)
+        {
+            BackupAutosave();   // để timer không ghi đè mất dữ liệu chưa khôi phục được
+            MessageBox.Show(this, $"Không khôi phục được phiên tự lưu: {ex.Message}\n\nBản sao: {_projectAutosavePath}.failed",
+                "Lỗi khôi phục", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void ApplyProject(OjProjectDocument project)
@@ -213,17 +294,25 @@ public partial class MainWindow : Window
                 throw new InvalidDataException("Số test của kế hoạch không khớp bộ test đã tạo.");
             restoredLastSpec = new JobSpec
             {
-                Problem = problem, Cfg = generatedConfig, TestCount = project.LastGeneratedCount,
-                GeneratedTestCount = generatedCount, Seed = project.LastGeneratedSeed,
-                SolutionPath = project.LastGeneratedSolutionPath, OutDir = project.LastTestDirectory,
-                ProblemName = project.ProblemName, ProblemCode = project.ProblemCode,
-                Groups = generatedGroups, ManualTests = generatedManual,
+                Problem = problem,
+                Cfg = generatedConfig,
+                TestCount = project.LastGeneratedCount,
+                GeneratedTestCount = generatedCount,
+                Seed = project.LastGeneratedSeed,
+                SolutionPath = project.LastGeneratedSolutionPath,
+                OutDir = project.LastTestDirectory,
+                ProblemName = project.ProblemName,
+                ProblemCode = project.ProblemCode,
+                Groups = generatedGroups,
+                ManualTests = generatedManual,
                 RequiredCoverageTags = project.LastGeneratedCoverageTags.ToList(),
             };
             int inputs = FileManager.ListFilesWithExt(project.LastTestDirectory, ".inp").Count;
             restoredLastResult = new JobResult
             {
-                OutDir = project.LastTestDirectory, InputCount = inputs, Seed = project.LastGeneratedSeed,
+                OutDir = project.LastTestDirectory,
+                InputCount = inputs,
+                Seed = project.LastGeneratedSeed,
                 Status = FileManager.ListFilesWithExt(project.LastTestDirectory, ".out").Count >= inputs ? SetStatus.Complete : SetStatus.InputOnly,
             };
         }
@@ -271,8 +360,14 @@ public partial class MainWindow : Window
 
     private void MnuSaveProjectAs_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Title = "Lưu dự án soạn đề", Filter = "OjGen project (*.ojproject)|*.ojproject", DefaultExt = ".ojproject", AddExtension = true,
-            FileName = _problemCode.Length > 0 ? _problemCode + ".ojproject" : "problem.ojproject" };
+        var dialog = new SaveFileDialog
+        {
+            Title = "Lưu dự án soạn đề",
+            Filter = "OjGen project (*.ojproject)|*.ojproject",
+            DefaultExt = ".ojproject",
+            AddExtension = true,
+            FileName = _problemCode.Length > 0 ? _problemCode + ".ojproject" : "problem.ojproject"
+        };
         if (dialog.ShowDialog(this) != true) return;
         _activeProjectPath = dialog.FileName;
         SaveProjectSnapshot(dialog.FileName, quiet: false);
@@ -292,7 +387,8 @@ public partial class MainWindow : Window
         {
             Title = "Lưu preset cấu hình ra đề",
             Filter = "OjGen preset (*.ojpreset.json)|*.ojpreset.json",
-            DefaultExt = ".ojpreset.json", AddExtension = true,
+            DefaultExt = ".ojpreset.json",
+            AddExtension = true,
             FileName = (_problemCode.Length > 0 ? _problemCode : _model.Problem.Id) + ".ojpreset.json",
             InitialDirectory = AuthoringPresetStore.DefaultDirectory,
         };
@@ -302,16 +398,24 @@ public partial class MainWindow : Window
             var preset = new AuthoringPreset
             {
                 Name = Path.GetFileName(dialog.FileName).Replace(".ojpreset.json", "", StringComparison.OrdinalIgnoreCase),
-                ProblemId = _model.Problem.Id, ProblemName = _problemName, ProblemCode = _problemCode,
+                ProblemId = _model.Problem.Id,
+                ProblemName = _problemName,
+                ProblemCode = _problemCode,
                 ReferenceSolution = txtSolution.Text.Trim(),
                 TestCount = _testGroups.Count > 0 ? _testGroups.Sum(group => group.TestCount) :
                     (Util.ParseLL(txtTests.Text, out long parsedTests) && parsedTests is > 0 and <= Generator.MaxTests ? (int)parsedTests : 10),
-                SeedPolicy = hasFixedSeed ? "Fixed" : "Random", Seed = hasFixedSeed ? fixedSeed : null,
+                SeedPolicy = hasFixedSeed ? "Fixed" : "Random",
+                Seed = hasFixedSeed ? fixedSeed : null,
                 TestPlan = TestPlanProfile.From(_model.Problem, _testGroups, _requiredCoverageTags),
-                RequiredCoverageTags = _requiredCoverageTags.ToList(), Ints = new(_model.Effective().Ints), Texts = new(_model.Effective().Texts),
-                ValidatorPath = _projectPackage.ValidatorPath, CheckerPath = _projectPackage.CheckerPath,
-                CheckerArguments = _projectPackage.CheckerArguments, CheckerTimeoutMs = _projectPackage.CheckerTimeoutMs,
-                ContractSuitePath = _projectPackage.ContractSuitePath, CandidateSolution = _projectPackage.CandidateSolution,
+                RequiredCoverageTags = _requiredCoverageTags.ToList(),
+                Ints = new(_model.Effective().Ints),
+                Texts = new(_model.Effective().Texts),
+                ValidatorPath = _projectPackage.ValidatorPath,
+                CheckerPath = _projectPackage.CheckerPath,
+                CheckerArguments = _projectPackage.CheckerArguments,
+                CheckerTimeoutMs = _projectPackage.CheckerTimeoutMs,
+                ContractSuitePath = _projectPackage.ContractSuitePath,
+                CandidateSolution = _projectPackage.CandidateSolution,
             };
             preset.Save(dialog.FileName);
             MessageBox.Show(this, "Đã lưu preset:\n" + dialog.FileName, "Preset ra đề", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -324,8 +428,10 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(AuthoringPresetStore.DefaultDirectory);
         var dialog = new OpenFileDialog
         {
-            Title = "Chọn preset ra đề", Filter = "OjGen preset (*.ojpreset.json)|*.ojpreset.json|JSON (*.json)|*.json",
-            CheckFileExists = true, InitialDirectory = AuthoringPresetStore.DefaultDirectory,
+            Title = "Chọn preset ra đề",
+            Filter = "OjGen preset (*.ojpreset.json)|*.ojpreset.json|JSON (*.json)|*.json",
+            CheckFileExists = true,
+            InitialDirectory = AuthoringPresetStore.DefaultDirectory,
         };
         if (dialog.ShowDialog(this) != true) return;
         try
@@ -358,8 +464,12 @@ public partial class MainWindow : Window
             txtSeed.Text = preset.SeedPolicy == "Fixed" && preset.Seed.HasValue ? Util.LL(preset.Seed.Value) : "";
             _projectPackage = new ProjectPackageOptions
             {
-                ValidatorPath = preset.ValidatorPath, CheckerPath = preset.CheckerPath, CheckerArguments = preset.CheckerArguments,
-                CheckerTimeoutMs = preset.CheckerTimeoutMs, ContractSuitePath = preset.ContractSuitePath, CandidateSolution = preset.CandidateSolution,
+                ValidatorPath = preset.ValidatorPath,
+                CheckerPath = preset.CheckerPath,
+                CheckerArguments = preset.CheckerArguments,
+                CheckerTimeoutMs = preset.CheckerTimeoutMs,
+                ContractSuitePath = preset.ContractSuitePath,
+                CandidateSolution = preset.CandidateSolution,
             };
             if (preset.ReferenceSolution.Length > 0) txtSolution.Text = preset.ReferenceSolution;
             lblSetupSummary.Text = $"Bài: {_problemName} · mã {_problemCode} · khuôn {problem.Title}";
@@ -659,7 +769,8 @@ public partial class MainWindow : Window
         if (_model == null) return false;
         var samples = _manualTests.Select(test => test.Clone()).ToList();
         var editor = new StatementEditorWindow(_model.Problem, _model.Effective(), _problemName, _problemCode,
-            samples, _authoringDocument) { Owner = this };
+            samples, _authoringDocument)
+        { Owner = this };
         if (editor.ShowDialog() != true || editor.Result is not { } document) return false;
         _authoringDocument = document;
         _problemName = document.Name;
@@ -686,7 +797,8 @@ public partial class MainWindow : Window
         int sampleCount = samples.Count;
         string parent = Path.GetFullPath(_st.OutputRoot);
         var dialog = new PackageWindow(_authoringDocument!.Name, _authoringDocument.Code, parent, testDirectory,
-            txtSolution.Text, sampleCount, testCount, _projectPackage) { Owner = this };
+            txtSolution.Text, sampleCount, testCount, _projectPackage)
+        { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } options) return;
         _projectPackage.Capture(options);
 
@@ -746,7 +858,7 @@ public partial class MainWindow : Window
         });
         if (run == null || package == null)
         {
-            MessageBox.Show(this, "Không đóng gói được. Xem tab Nhật ký; thư mục gói có thể còn một phần nếu lỗi ghi file.", "Lỗi đóng gói", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, "Không đóng gói được. Xem tab Nhật ký; thư mục gói chưa hoàn chỉnh sẽ được xóa tự động khi lỗi.", "Lỗi đóng gói", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
         string auditStatus = audit.WarningCount > 0 ? $"Đạt có {audit.WarningCount} lưu ý" : "Đạt";
@@ -1438,7 +1550,7 @@ public partial class MainWindow : Window
             _cts?.Cancel();
         }
         _projectAutosaveTimer.Stop();
-        SaveProjectSnapshot(_projectAutosavePath, quiet: true, force: true);
+        PersistAutosave(force: true);
         base.OnClosing(e);
     }
 }

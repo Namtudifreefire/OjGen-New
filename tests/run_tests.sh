@@ -171,6 +171,8 @@ expect_exit 0 "sinh DAG liên thông với mật độ thưa" "${BIN[@]}" --prob
 expect_exit 0 "sinh đồ thị hai phía dày" "${BIN[@]}" --problem graph --tests 4 --seed 15 --bipartite 1 --connected 1 --density 3 --minN 10 --maxN 10 --out "$T/graph_dense" --no-zip
 [[ $(count "$T/graph_dense" .inp) -eq 4 ]] && awk 'FNR==1 && ($1 != 10 || $2 < 19 || $2 > 25) { bad=1 } END { exit bad }' "$T/graph_dense"/*.inp && ok "mật độ dày: sinh đủ đồ thị hai phía đúng miền số cạnh" || bad "mật độ dày: thiếu test hoặc sai miền số cạnh"
 expect_exit 2 "mật độ cạnh cần đồ thị đơn" "${BIN[@]}" --problem graph --density 1 --simple 0
+expect_exit 2 "mật độ dày vượt giới hạn số cạnh mỗi test" "${BIN[@]}" --problem graph --density 3 --minN 200000 --maxN 200000
+expect_exit 2 "mật độ vừa vượt giới hạn số cạnh mỗi test" "${BIN[@]}" --problem graph --density 2 --minN 100000 --maxN 100000
 expect_exit 2 "DAG cần directed" "${BIN[@]}" --problem graph --dag 1
 expect_exit 2 "liên thông mạnh không kết hợp DAG" "${BIN[@]}" --problem graph --directed 1 --stronglyConnected 1 --dag 1
 expect_exit 2 "dạng bài không tồn tại" "${BIN[@]}" --problem khong_co
@@ -211,6 +213,33 @@ expect_exit 0 "--audit-dir tạo ZIP sau khi xác nhận cảnh báo" "${BIN[@]}
 cp -R "$T/audit" "$T/audit_tampered"
 printf '\n999\n' >> "$T/audit_tampered/test01.inp"
 expect_exit 2 "--zip-dir từ chối test đã bị sửa" "${BIN[@]}" --zip-dir "$T/audit_tampered"
+
+echo "== --ci-project với test nhập tay"
+# Dựng project: test01 là test nhập tay "5", test02/03 là hai input sinh bằng seed 7 (single_n mặc định).
+"${BIN[@]}" --problem single_n --tests 2 --seed 7 --no-zip --out "$T/ci_gen" > /dev/null
+mkdir -p "$T/ci_src/tests"
+printf '5\n' > "$T/ci_src/tests/test01.inp"
+cp "$T/ci_gen/test01.inp" "$T/ci_src/tests/test02.inp"
+cp "$T/ci_gen/test02.inp" "$T/ci_src/tests/test03.inp"
+for n in 01 02 03; do printf '1\n' > "$T/ci_src/tests/test$n.out"; done
+cat > "$T/ci_src/manual.ojproject" <<'EOF'
+{
+  "Version": 1,
+  "ProblemId": "single_n",
+  "LastTestDirectory": "tests",
+  "LastGeneratedCount": 3,
+  "LastGeneratedSeed": 7,
+  "LastGeneratedProblemId": "single_n",
+  "LastGeneratedManualTests": [
+    { "Name": "tay_1", "Input": "5\n", "IsSample": false, "ConfigName": "Cấu hình chung", "Ints": {}, "Texts": {} }
+  ]
+}
+EOF
+# Chưa có statement/manifest nên còn cảnh báo (exit 1). Trước khi sửa là exit 2 do lỗi tái lập giả
+# ("Sinh lại được 2 input nhưng thư mục có 3").
+expect_exit 1 "--ci-project chấp nhận project có test nhập tay" "${BIN[@]}" --ci-project "$T/ci_src/manual.ojproject" --json-report "$T/ci_manual.json"
+grep -q '"passed": true' "$T/ci_manual.json" && ok "ci-project: test tay không gây lỗi tái lập giả" || bad "ci-project: báo lỗi sai với test nhập tay"
+grep -q 'SHA-256 khớp cho cả 3 input' "$T/ci_manual.json" && ok "ci-project: tái lập khớp cả 3 input (gồm test nhập tay)" || bad "ci-project: không đối chiếu đủ 3 input"
 
 if [[ -n "${CPP_REF:-}" && -x "$CPP_REF" ]]; then
     echo "== So khớp từng byte với bản C++ gốc ($CPP_REF)"

@@ -1,0 +1,151 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+    - when: never
+
+stages:
+  - verify
+  - package
+
+variables:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+
+linux-regression:
+  stage: verify
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  cache:
+    key:
+      files:
+        - src/OjGen.Cli/OjGen.Cli.csproj
+        - src/OjGen.Core/OjGen.Core.csproj
+    paths:
+      - .nuget/packages/
+  before_script:
+    - apt-get update
+    - apt-get install --yes --no-install-recommends g++ python3 unzip
+  script:
+    - bash tests/run_tests.sh
+    - python3 tests/check_wpf_static.py
+
+windows-package:
+  stage: package
+  tags:
+    - saas-windows-medium-amd64
+  needs:
+    - job: linux-regression
+      artifacts: false
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: never
+  script:
+    - |
+      $ErrorActionPreference = 'Stop'
+      $repoRoot = $env:CI_PROJECT_DIR
+      $ciRoot = Join-Path $repoRoot 'output\ci-gitlab'
+      $sdkRoot = Join-Path $ciRoot 'dotnet'
+      $publishRoot = Join-Path $ciRoot 'publish'
+      $releaseRoot = Join-Path $ciRoot 'release'
+      New-Item -ItemType Directory -Force -Path $ciRoot, $sdkRoot, $publishRoot, $releaseRoot | Out-Null
+
+      $sdkList = dotnet --list-sdks 2>$null | Out-String
+      if ($sdkList -notmatch '(?m)^10\.') {
+          $installer = Join-Path $env:TEMP 'dotnet-install.ps1'
+          Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installer
+          & $installer -Channel '10.0' -InstallDir $sdkRoot -NoPath
+          if ($LASTEXITCODE -ne 0) { throw 'Cài .NET SDK 10 thất bại.' }
+      }
+      $env:DOTNET_ROOT = $sdkRoot
+      $env:PATH = "$sdkRoot;$env:PATH"
+      $sdkVersion = (dotnet --version | Out-String).Trim()
+      if ($sdkVersion -notmatch '^10\.') { throw "Cần .NET SDK 10, hiện nhận $sdkVersion." }
+
+      python tests/check_wpf_static.py
+      if ($LASTEXITCODE -ne 0) { throw 'Kiểm tra tĩnh giao diện WPF thất bại.' }
+
+      [xml]$buildProps = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
+      $version = [string]$buildProps.Project.PropertyGroup.Version
+      if ([string]::IsNullOrWhiteSpace($version)) { throw 'Không đọc được Version trong Directory.Build.props.' }
+      if ($env:CI_COMMIT_TAG -and $env:CI_COMMIT_TAG -ne "v$version") {
+          throw "Tag $env:CI_COMMIT_TAG không khớp phiên bản trong Directory.Build.props (v$version)."
+      }
+
+      $guiOutput = Join-Path $publishRoot 'GUI'
+      $cliOutput = Join-Path $publishRoot 'CLI'
+      $publishOptions = @('-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
+          '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
+          '-p:DebugType=None', '-p:DebugSymbols=false', '-p:EnableCompressionInSingleFile=true')
+      dotnet publish (Join-Path $repoRoot 'src\OjGen.App\OjGen.App.csproj') @publishOptions -o $guiOutput
+      if ($LASTEXITCODE -ne 0) { throw 'Publish GUI win-x64 thất bại.' }
+      dotnet publish (Join-Path $repoRoot 'src\OjGen.Cli\OjGen.Cli.csproj') @publishOptions -o $cliOutput
+      if ($LASTEXITCODE -ne 0) { throw 'Publish CLI win-x64 thất bại.' }
+
+      $guiExe = Join-Path $guiOutput 'OjGen.exe'
+      $cliExe = Join-Path $cliOutput 'ojgen.exe'
+      foreach ($exe in @($guiExe, $cliExe)) {
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Thiếu file thực thi: $exe" }
+          $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
+          if ($productVersion -notmatch [regex]::Escape($version)) { throw "Sai phiên bản trong $exe: $productVersion" }
+      }
+      $cliVersion = (& $cliExe --version | Out-String).Trim()
+      if ($LASTEXITCODE -ne 0 -or $cliVersion -notmatch [regex]::Escape($version)) { throw "CLI --version thất bại: $cliVersion" }
+      $env:OJGEN_SELFTEST_ROOT = Join-Path $ciRoot 'selftest'
+      & $cliExe --selftest
+      if ($LASTEXITCODE -ne 0) { throw 'CLI selftest thất bại.' }
+
+      $packageName = "OjGen-$version-win-x64"
+      $packageRoot = Join-Path $releaseRoot $packageName
+      $zipPath = Join-Path $releaseRoot "$packageName.zip"
+      $zipHashPath = "$zipPath.sha256"
+      New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'GUI'), (Join-Path $packageRoot 'CLI') | Out-Null
+      Copy-Item -LiteralPath $guiExe -Destination (Join-Path $packageRoot 'GUI\OjGen.exe')
+      Copy-Item -LiteralPath $cliExe -Destination (Join-Path $packageRoot 'CLI\ojgen.exe')
+      foreach ($file in @('README.md', 'CHANGELOG.md', 'PLUGIN_GUIDE.md', 'LICENSE', "RELEASE_NOTES_v$version.md")) {
+          Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $packageRoot
+      }
+
+      $sumPath = Join-Path $packageRoot 'SHA256SUMS.txt'
+      $sumLines = @(Get-ChildItem -LiteralPath $packageRoot -File -Recurse | Sort-Object FullName | ForEach-Object {
+          $relative = [System.IO.Path]::GetRelativePath($packageRoot, $_.FullName).Replace('\', '/')
+          $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $relative"
+      })
+      [System.IO.File]::WriteAllLines($sumPath, $sumLines, [System.Text.UTF8Encoding]::new($false))
+
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      [System.IO.Compression.ZipFile]::CreateFromDirectory($packageRoot, $zipPath,
+          [System.IO.Compression.CompressionLevel]::Optimal, $true)
+      $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+      try {
+          $entryNames = @($archive.Entries | Where-Object { -not $_.FullName.EndsWith('/') } | ForEach-Object FullName | Sort-Object)
+          $expectedEntries = @(Get-ChildItem -LiteralPath $packageRoot -File -Recurse | ForEach-Object {
+              $relative = [System.IO.Path]::GetRelativePath($packageRoot, $_.FullName).Replace('\', '/')
+              "$packageName/$relative"
+          } | Sort-Object)
+          if (Compare-Object -ReferenceObject $expectedEntries -DifferenceObject $entryNames) {
+              throw 'Danh sách file trong ZIP không khớp thư mục gói.'
+          }
+      }
+      finally { $archive.Dispose() }
+
+      foreach ($line in Get-Content -LiteralPath $sumPath) {
+          $relative = $line.Substring(66).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+          $expectedHash = $line.Substring(0, 64)
+          $actualHash = (Get-FileHash -LiteralPath (Join-Path $packageRoot $relative) -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) { throw "SHA-256 không khớp: $relative" }
+      }
+      $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+      [System.IO.File]::WriteAllText($zipHashPath, "$zipHash  $packageName.zip`n", [System.Text.UTF8Encoding]::new($false))
+      Write-Host "Đã tạo $zipPath"
+      Write-Host "SHA-256: $zipHash"
+  artifacts:
+    name: "OjGen-$CI_COMMIT_REF_SLUG-win-x64"
+    paths:
+      - output/ci-gitlab/release/*.zip
+      - output/ci-gitlab/release/*.sha256
+    expire_in: 30 days

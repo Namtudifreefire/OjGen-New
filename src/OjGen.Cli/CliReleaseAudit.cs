@@ -86,10 +86,16 @@ internal static class CliReleaseAudit
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Cấu hình áp dụng cho test thứ testIndex (đã sắp xếp theo tên): test nhập tay đứng trước,
+    /// sau đó mới tới các nhóm sinh tự động. Phải trừ offset test tay (giống ReleaseAuditService của GUI).
+    /// </summary>
     private static Config ConfigFor(Config fallback, JobSpec? spec, int testIndex)
     {
-        if (spec == null || spec.Groups.Count == 0) return fallback;
-        int generatedIndex = testIndex;
+        if (spec == null) return fallback;
+        if (testIndex < spec.ManualTests.Count) return spec.ManualTests[testIndex].Cfg;
+        int generatedIndex = testIndex - spec.ManualTests.Count;
+        if (spec.Groups.Count == 0) return spec.Cfg;
         foreach (var group in spec.Groups)
         {
             if (generatedIndex < group.TestCount) return group.Cfg;
@@ -515,9 +521,11 @@ internal static class CliReleaseAudit
                     if (duplicate > 10) report.Add(CliAuditLevel.Warning, "Test trùng lặp", $"Còn {duplicate - 10} test trùng không hiển thị.");
                     if (orphan > 10) report.Add(CliAuditLevel.Error, "Output mồ côi", $"Còn {orphan - 10} output không có input không hiển thị.");
 
+                    // Nhóm mặc định "Tất cả" chỉ gồm test sinh tự động; test nhập tay được CoverageAnalyzer tính riêng.
+                    int manualCount = options.GeneratedSpec?.ManualTests.Count ?? 0;
                     IReadOnlyList<TestGroupSpec> groups = options.GeneratedSpec?.Groups.Count > 0 ? options.GeneratedSpec.Groups : new[]
                     {
-                        new TestGroupSpec { Name = "Tất cả", TestCount = inputs.Count, Cfg = options.Config.Clone() },
+                        new TestGroupSpec { Name = "Tất cả", TestCount = Math.Max(1, inputs.Count - manualCount), Cfg = options.Config.Clone() },
                     };
                     var coverage = CoverageAnalyzer.Analyze(options.Problem, inputs, groups,
                         options.GeneratedSpec?.ManualTests ?? new List<ManualTestSpec>(), options.RequiredCoverageTags);

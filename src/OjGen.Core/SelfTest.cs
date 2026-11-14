@@ -233,6 +233,8 @@ public static class SelfTest
             C("graph", new[] { ("minN", 10L), ("maxN", 10L), ("minM", 3L), ("maxM", 3L), ("connected", 1L) }, NoTexts, 0, "không đủ cạnh để liên thông"),
             C("graph", new[] { ("directed", 0L), ("dag", 1L) }, NoTexts, 0, "DAG cần có hướng"),
             C("graph", new[] { ("minN", 4L), ("maxN", 4L), ("minM", 5L), ("maxM", 5L), ("bipartite", 1L) }, NoTexts, 0, "quá số cạnh đồ thị hai phía đơn"),
+            C("graph", new[] { ("minN", 200000L), ("maxN", 200000L), ("density", 3L) }, NoTexts, 0, "mật độ dày vượt trần MaxE"),
+            C("graph", new[] { ("minN", 100000L), ("maxN", 100000L), ("density", 2L) }, NoTexts, 0, "mật độ vừa vượt trần MaxE"),
             C("two_ints", new[] { ("minA", 10L), ("maxA", 20L), ("minB", 1L), ("maxB", 5L), ("order", 1L) }, NoTexts, 0, "không thể a <= b"),
         };
         foreach (var c in invalid)
@@ -241,6 +243,15 @@ public static class SelfTest
             Check(Generator.ValidateFullConfig(p, MakeConfig(p, c)) != null, $"{c.Problem}: từ chối cấu hình sai ({c.Note})");
         }
         log.Line($"  Đã kiểm tra {invalid.Count} cấu hình sai (phải bị từ chối).");
+
+        // Mật độ vẫn dùng được khi n đủ nhỏ để số cạnh nằm trong trần MaxE (không tràn / không cạn bộ nhớ).
+        {
+            var g = Problems.Find("graph")!;
+            var dense = MakeConfig(g, C("graph", new[] { ("minN", 1000L), ("maxN", 1000L), ("density", 3L), ("connected", 1L) }, NoTexts, 0, ""));
+            Check(Generator.ValidateFullConfig(g, dense) == null, "graph: n = 1000 mật độ dày vẫn hợp lệ (≤ 499.500 cạnh, dưới trần MaxE)");
+            var sparse = MakeConfig(g, C("graph", new[] { ("minN", 200000L), ("maxN", 200000L), ("density", 1L), ("connected", 1L) }, NoTexts, 0, ""));
+            Check(Generator.ValidateFullConfig(g, sparse) == null, "graph: n = 200000 mật độ thưa vẫn hợp lệ dưới trần MaxE");
+        }
 
         // ConfigModel / JobPlanner (logic của form trên giao diện)
         {
