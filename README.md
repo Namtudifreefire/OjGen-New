@@ -56,6 +56,7 @@ OJGEN 3.3.2 tập trung sửa lỗi và củng cố độ tin cậy cho quy trì
 - **Plugin generator:** Nạp DLL có lớp triển khai `IOjGenProblemPlugin` và trả về các lớp con `Problem`; CLI dùng `--plugin PATH`, GUI tự dò thư mục `plugins`.
 - **Plugin SDK có phiên bản:** Plugin có thể khai báo `ProblemPluginSdk.ApiVersion`; `ojgen --plugin-check DLL_OR_DIR` kiểm tra tương thích trước khi cấu hình sử dụng.
 - **Plugin API mở rộng (v3.3.2):** Hệ thống extension hoàn chỉnh với 6 điểm mở rộng — `IOjGenValidator` (xác thực input ngữ nghĩa), `IOjGenChecker` (checker tùy chỉnh), `IOjGenExporter` (xuất format test-data), `IOjGenSolutionRunner` (runner ngôn ngữ mới), `IOjGenEventHook` (hook vòng đời), `IOjGenProblemPluginMetadata` (metadata phiên bản/tác giả). `PluginExtensionRegistry` cho truy cập toàn cục; hook tích hợp vào pipeline sinh test và chạy lời giải.
+- **Tìm kiếm lệnh CLI (v3.3.2):** `ojgen --search <từ khóa>` tìm kiếm nhanh 60+ lệnh/tùy chọn theo tên, danh mục, mô tả; kết quả nhóm theo danh mục. Ví dụ: `ojgen --search zip`, `ojgen --search stress`, `ojgen --search solution`, `ojgen --search audit`.
 - **Viết plugin:** Hướng dẫn tạo DLL, triển khai interface và đặt plugin có trong [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
 - **Hàng đợi GUI:** Tự lưu và khôi phục qua lần mở app; đổi thứ tự, seed, thư mục output, kế hoạch nhóm, xóa mục và giữ mục lỗi để sửa/chạy lại.
 - **JSON và shell completion:** `--json-report FILE` ghi báo cáo máy đọc được; `--completion bash|powershell` tạo gợi ý lệnh.
@@ -242,6 +243,19 @@ Tạo báo cáo cho script và gợi ý tham số shell:
 ```bash
 ojgen --problem array --tests 100 --seed 2024 --json-report result.json
 ojgen --completion powershell
+```
+
+Tìm kiếm lệnh/tùy chọn nhanh chóng (v3.3.2):
+
+```bash
+ojgen --search zip          # Tìm các lệnh liên quan ZIP
+ojgen --search stress       # Tìm các lệnh stress test
+ojgen --search solution     # Tìm các lệnh liên quan solution
+ojgen --search audit        # Tìm các lệnh audit
+ojgen --search plugin       # Tìm các lệnh plugin
+ojgen --search topic        # Tìm các lệnh topic
+ojgen --search library      # Tìm các lệnh library
+ojgen --search search       # Tìm chính lệnh search
 ```
 
 Tiếp tục sau khi sinh bị dừng bằng cách dùng lại cùng seed, tham số và thư mục output:

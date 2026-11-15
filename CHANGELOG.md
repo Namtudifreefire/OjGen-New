@@ -5,6 +5,7 @@
 - **Plugin API hoàn thiện**: Triển khai đầy đủ hệ thống mở rộng plugin với 6 điểm mở rộng (Validator, Checker, Exporter, SolutionRunner, EventHook, ProblemPluginMetadata) và PluginExtensionRegistry truy cập toàn cục.
 - **Event Hook System**: Hệ thống hook vòng đời (OnStart, OnBeforeGenerate/AfterGenerate, OnBeforeRunSolution/AfterRunSolution, OnBeforeRunChecker/AfterRunChecker, OnAuditStart/Complete, OnBeforePackage/AfterPackage, OnShutdown) tích hợp vào pipeline sinh test và chạy lời giải.
 - **ConfigStressTester CLI**: Tích hợp `--stress-test` lệnh dòng lệnh để stress test tham số tìm biên độ fail (TLE/MLE/WA), hỗ trợ format range (MIN,MAX[,STEP]) và giá trị tường minh (V1,V2,V3...), tích hợp reference solution phát hiện WA, báo cáo bảng thống kê và phân tích biên tự động, xuất JSON report.
+- **CLI Search Command**: Thêm `--search <từ khóa>` để tìm kiếm lệnh/tùy chọn nhanh chóng qua 60+ lệnh, tìm theo tên lệnh, danh mục và mô tả; kết quả nhóm theo danh mục (Sinh test, Kiểm định, Đóng gói, Workspace, Plugin, Stress test, Thu nhỏ, Tiện ích); hỗ trợ shell completion (bash/PowerShell). Ví dụ: `ojgen --search zip`, `ojgen --search stress`, `ojgen --search solution`.
 - **Ví dụ Plugin đầy đủ**: Thêm `examples/FullExamplePlugin/` demo tất cả extension points: custom problem, validator, checker, exporter, solution runner, event hook.
 - **Tài liệu Plugin SDK**: Cập nhật `docs/PLUGIN_SDK.md` và `PLUGIN_GUIDE.md` tham chiếu đầy đủ với ví dụ code.
 
