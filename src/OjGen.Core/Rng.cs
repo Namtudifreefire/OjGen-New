@@ -69,6 +69,14 @@ public sealed class Rng
         if (lo > hi) (lo, hi) = (hi, lo);
         ulong span = Util.SpanOf(lo, hi);
         if (span == ulong.MaxValue) return unchecked((long)Next());
+        // span + 1 would wrap when span == ulong.MaxValue - 1 (i.e., lo=long.MinValue, hi=long.MaxValue-1).
+        // In that case, use rejection sampling directly on the full range to avoid bias.
+        if (span == ulong.MaxValue - 1)
+        {
+            ulong x;
+            do x = Next(); while (x > span);
+            return unchecked((long)((ulong)lo + x));
+        }
         ulong off = Below(span + 1);
         return unchecked((long)((ulong)lo + off));
     }

@@ -45,7 +45,9 @@ internal static class CliApp
         s.Append("  ojgen --check-translations translations.ojtranslation.json  Kiểm tra bản dịch, ví dụ và giới hạn\n");
         s.Append("  ojgen --export-tests DIR --format <ojgen|polygon|domjudge|dmoj> --out FILE.zip  Xuất test-data interchange\n");
         s.Append("  ojgen --plugin-check DLL_OR_DIR  Kiểm tra plugin/API trước khi dùng (plugin được nạp trong process)\n");
+        s.Append("  ojgen --shrink --input <file.inp> --solution <file> [--reference <file>] [--problem <dạng>] [tùy chọn]  Thu nhỏ test case giữ nguyên lỗi\n");
         s.Append("  ojgen --selftest                   Tự kiểm tra các module và bộ tạo ZIP\n");
+        s.Append("  ojgen --stress-test --problem <dạng> --solution <file> [--reference <file>] [tùy chọn]  Stress test tham số để tìm biên độ fail\n");
         s.Append("  ojgen --help | --version\n\n");
         s.Append("TÙY CHỌN KHI SINH TEST\n");
         s.Append($"  --tests N            Số lượng test (1..{Generator.MaxTests}, mặc định 10)\n");
@@ -74,6 +76,36 @@ internal static class CliApp
         s.Append("  --json-report FILE   Ghi kết quả cuối cùng dạng JSON vào file\n");
         s.Append("  --plugin PATH        Nạp plugin generator từ DLL hoặc thư mục plugins\n");
         s.Append("  --<tham số> GIÁ_TRỊ  Tham số riêng của dạng bài, xem bằng --info <dạng>\n\n");
+        s.Append("TÙY CHỌN KHI STRESS TEST (--stress-test)\n");
+        s.Append("  --problem <dạng>     Dạng bài (bắt buộc)\n");
+        s.Append("  --solution FILE      Lời giải cần test (.c/.cpp, .py, .java, .kt, .pas/.pp, .cs, .rs, .go, .ojrun.json hoặc executable)\n");
+        s.Append("  --reference FILE     Lời giải tham chiếu (tùy chọn, để phát hiện WA)\n");
+        s.Append("  --tests N            Số test mỗi cấu hình (mặc định 10)\n");
+        s.Append("  --seed S             Seed cơ sở (null = random mỗi cấu hình)\n");
+        s.Append("  --timeout MS         Thời gian tối đa mỗi test (ms)\n");
+        s.Append("  --max-output-mb M    Dung lượng output tối đa mỗi test (MB)\n");
+        s.Append("  --memory-mb M        Giới hạn bộ nhớ lời giải (MB, 0 = không giới hạn)\n");
+        s.Append("  --compiler PATH      Trình biên dịch C++ (mặc định g++)\n");
+        s.Append("  --cxxflags \"...\"     Cờ biên dịch\n");
+        s.Append("  --python CMD         Lệnh chạy Python\n");
+        s.Append("  --ignore-ws          Bỏ qua khoảng trắng khi so sánh output (mặc định bật)\n");
+        s.Append("  --no-ignore-ws       Không bỏ qua khoảng trắng khi so sánh output\n");
+        s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini)\n");
+        s.Append("  --json-report FILE   Ghi kết quả dạng JSON\n");
+        s.Append("  --<tham số> MIN,MAX[,STEP]  Khoảng tham số: vd --minN 10,100,10 hoặc --minN 10,50,100,1000\n\n");
+        s.Append("TÙY CHỌN KHI THU NHỎ (--shrink)\n");
+        s.Append("  --input FILE         File input cần thu nhỏ (bắt buộc)\n");
+        s.Append("  --solution FILE      Lời giải bị lỗi (.c/.cpp, .py, .java, .kt, .pas/.pp, .cs, .rs, .go, .ojrun.json hoặc executable)\n");
+        s.Append("  --reference FILE     Lời giải tham chiếu (tùy chọn, cho WA so sánh output)\n");
+        s.Append("  --problem <dạng>     Dạng bài (tự phát hiện từ input nếu không cho)\n");
+        s.Append("  --timeout MS         Thời gian tối đa mỗi chạy (ms, mặc định 2000)\n");
+        s.Append("  --memory-mb M        Giới hạn bộ nhớ (MB, 0 = không giới hạn)\n");
+        s.Append("  --max-output-mb M    Dung lượng output tối đa (MB)\n");
+        s.Append("  --max-trials N       Số lần thử tối đa (mặc định 500)\n");
+        s.Append("  --aggressive         Thử thu nhỏ mạnh hơn (xoá dòng/token đơn lẻ)\n");
+        s.Append("  --no-ignore-ws       Không bỏ qua khoảng trắng khi so sánh output (cho WA)\n");
+        s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini)\n");
+        s.Append("  --json-report FILE   Ghi kết quả dạng JSON\n\n");
         s.Append("KIỂM ĐỊNH PHÁT HÀNH (tùy chọn)\n");
         s.Append("  --audit               Kiểm định bộ vừa sinh trước khi tạo ZIP\n");
         s.Append("  --audit-dir DIR       Kiểm định thư mục test có sẵn; mặc định tạo ZIP nếu đạt\n");
@@ -104,6 +136,9 @@ internal static class CliApp
         s.Append("  ojgen --problem custom --tests 50 --bounds \"1:10,50:100,-20:20\" --solution \"D:\\OJ\\bai 1\\sol.cpp\"\n");
         s.Append("  ojgen --problem graph --tests 30 --minN 5 --maxN 1000 --minM 4 --maxM 5000 --connected 1 --weighted 1\n\n");
         s.Append("  ojgen --problem graph --tests 50 --seed 2026 --density 3 --directed 1 --connected 1  # mật độ dày\n\n");
+        s.Append("  ojgen --stress-test --problem graph --solution sol.cpp --tests 20 --minN 10,1000,50 --maxN 20,2000,50 --minM 5,5000,50 --maxM 10,10000,50\n");
+        s.Append("  ojgen --stress-test --problem array --solution sol.cpp --reference ref.cpp --tests 50 --minN 10,100000\n");
+        s.Append("  ojgen --stress-test --problem custom --solution sol.py --tests 10 --n \"10,50,100,500,1000\" --min -1000 --max 1000\n\n");
         s.Append("  ojgen --problem array --tests 30 --seed 2024 --solution sol.cpp --audit --no-zip\n");
         s.Append("  ojgen --audit-dir output/array --problem array --tests 30 --seed 2024 --solution sol.cpp --allow-audit-warnings\n\n");
         s.Append("MÃ THOÁT: 0 = thành công, 1 = có khác biệt khi so sánh package hoặc lời giải lỗi/đã hủy, 2 = lỗi tham số, cấu hình hoặc kiểm định phát hành.\n");
@@ -124,6 +159,8 @@ internal static class CliApp
         "--library-clone",
         "--plugin-check",
         "--contest-export",
+        "--shrink", "--input", "--reference", "--max-trials", "--aggressive", "--no-ignore-ws",
+        "--stress-test", "--ignore-ws", "--no-ignore-ws",
     };
 
     private static string CompletionText(string shell)
@@ -291,7 +328,8 @@ internal static class CliApp
     private static readonly HashSet<string> FlagOnly = new()
     {
         "help", "h", "list", "topics", "version", "selftest", "force", "no-zip", "zip", "zip-incomplete", "rebuild", "no-compress",
-        "audit", "allow-audit-warnings", "resume", "preset-list",
+        "audit", "allow-audit-warnings", "resume", "preset-list", "shrink", "aggressive", "no-ignore-ws",
+        "stress-test", "ignore-ws",
     };
 
     private static readonly HashSet<string> GlobalKeys = new()
@@ -305,6 +343,7 @@ internal static class CliApp
         "library-clone", "library-tag",
         "plugin-check",
         "contest-export",
+        "shrink", "input", "reference", "max-trials", "aggressive", "no-ignore-ws",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -399,6 +438,7 @@ internal static class CliApp
         args.Kv.ContainsKey("library"), args.Kv.ContainsKey("contest"), args.Kv.ContainsKey("compare-problem"),
         args.Kv.ContainsKey("check-resources"), args.Kv.ContainsKey("check-translations"), args.Kv.ContainsKey("format-info"),
         args.Kv.ContainsKey("export-tests"), args.Kv.ContainsKey("library-clone"), args.Kv.ContainsKey("plugin-check"),
+        args.Flags.Contains("stress-test"),
     }.Count(value => value);
 
     private static int RunWorkspaceCommand(Args a, IJobLog log)
@@ -627,6 +667,10 @@ internal static class CliApp
                     new { archivePath = exported.ArchivePath, exported.Format, exported.TestCount }, out string? jsonError)) throw new IOException(jsonError ?? "Không ghi được JSON report.");
                 return 0;
             }
+            if (a.Flags.Contains("stress-test"))
+            {
+                return RunStressTestCommand(a, log);
+            }
         }
         catch (Exception ex) { Err("LỖI workspace: " + ex.Message); return 2; }
         return 2;
@@ -802,6 +846,10 @@ internal static class CliApp
             if (completion.Length == 0) { Err("LỖI: --completion chỉ nhận bash hoặc powershell."); return 2; }
             Console.Out.Write(completion);
             return 0;
+        }
+        if (a.Flags.Contains("shrink"))
+        {
+            return RunShrinkCommand(a, log);
         }
         if (a.Kv.TryGetValue("import-tests", out string? importSource))
         {
@@ -1093,5 +1141,487 @@ internal static class CliApp
                 generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount, zipPath = finalZipPath });
         return FinishWithJson(a, 0, new { exitCode = 0, status = generated.Status.ToString(), generated.Seed, generated.OutDir,
             zipPath = finalZipPath, generated.InputCount, generated.Coverage, generated.Report, audit = generatedAudit.Items, warnings = generatedAudit.WarningCount });
+    }
+
+    private static int RunShrinkCommand(Args a, IJobLog log)
+    {
+        if (!a.Kv.TryGetValue("input", out string? inputPath))
+        {
+            Err("LỖI: --shrink cần --input <file.inp>.");
+            return 2;
+        }
+        if (!a.Kv.TryGetValue("solution", out string? solutionPath))
+        {
+            Err("LỖI: --shrink cần --solution <file lời giải>.");
+            return 2;
+        }
+        if (!File.Exists(inputPath))
+        {
+            Err("LỖI: không tìm thấy file input: " + inputPath);
+            return 2;
+        }
+        if (!File.Exists(solutionPath))
+        {
+            Err("LỖI: không tìm thấy lời giải: " + solutionPath);
+            return 2;
+        }
+
+        string? referencePath = null;
+        if (a.Kv.TryGetValue("reference", out string? refPath))
+        {
+            if (!File.Exists(refPath))
+            {
+                Err("LỖI: không tìm thấy lời giải tham chiếu: " + refPath);
+                return 2;
+            }
+            referencePath = refPath;
+        }
+
+        Problem? problem = null;
+        if (a.Kv.TryGetValue("problem", out string? problemId))
+        {
+            problem = Problems.Find(problemId);
+            if (problem == null)
+            {
+                Err($"LỖI: không có dạng bài '{problemId}'.");
+                return 2;
+            }
+        }
+        else
+        {
+            // Try to auto-detect problem from input format
+            string inputText = FileManager.ReadText(inputPath);
+            problem = DetectProblemFromInput(inputText);
+            if (problem == null)
+            {
+                Err("LỖI: không xác định được dạng bài từ input. Hãy dùng --problem <dạng>.");
+                return 2;
+            }
+            log.Line($"Tự phát hiện dạng bài: {problem.Id} ({problem.Title})");
+        }
+
+        // Build config from CLI parameters (same logic as main generation)
+        var cfg = problem.DefaultConfig();
+        var explicitKeys = new HashSet<string>();
+        var specs = problem.Params.ToDictionary(x => x.Key);
+        foreach (var k in a.Order)
+        {
+            if (GlobalKeys.Contains(k) || k == "shrink" || k == "input" || k == "solution" || k == "reference" || k == "max-trials" || k == "aggressive" || k == "no-ignore-ws") continue;
+            if (!specs.TryGetValue(k, out var ps))
+            {
+                string names = string.Concat(problem.Params.Select(x => " --" + x.Key));
+                Err($"LỖI: dạng bài '{problem.Id}' không có tham số --{k}.\n  Các tham số hợp lệ:{names}\n  Xem chi tiết: ojgen --info {problem.Id}");
+                return 2;
+            }
+            string v = a.Kv[k];
+            if (ps.Type == ParamType.Text) cfg.SetText(k, v);
+            else if (ps.Type == ParamType.Bool)
+            {
+                string b = v.ToLowerInvariant();
+                if (b is "1" or "true" or "yes" or "y") cfg.Set(k, 1);
+                else if (b is "0" or "false" or "no" or "n") cfg.Set(k, 0);
+                else { Err($"LỖI: --{k} chỉ nhận 0 hoặc 1."); return 2; }
+            }
+            else
+            {
+                if (!Util.ParseLL(v, out long x))
+                {
+                    Err($"LỖI: --{k} = '{v}' không phải số nguyên hợp lệ (hoặc vượt phạm vi long long).");
+                    return 2;
+                }
+                cfg.Set(k, x);
+            }
+            explicitKeys.Add(k);
+        }
+        problem.FinalizeCliConfig(cfg, explicitKeys);
+        if (Generator.ValidateFullConfig(problem, cfg) is { } ce) { Err("LỖI cấu hình: " + ce); return 2; }
+
+        var st = Settings.Load(a.Kv.GetValueOrDefault("settings"), out string? warn);
+        if (!string.IsNullOrEmpty(warn)) Console.Out.WriteLine(warn);
+
+        var limits = new RunLimits
+        {
+            TimeoutMs = st.TimeoutMs,
+            MaxOutputBytes = (ulong)st.MaxOutputMB << 20,
+            MemoryBytes = (ulong)st.MemoryMB << 20,
+        };
+
+        if (a.Kv.TryGetValue("timeout", out string? timeoutText) && int.TryParse(timeoutText, out int timeout))
+            limits.TimeoutMs = timeout;
+        if (a.Kv.TryGetValue("max-output-mb", out string? maxOutputText) && long.TryParse(maxOutputText, out long maxOutput))
+            limits.MaxOutputBytes = (ulong)maxOutput << 20;
+        if (a.Kv.TryGetValue("memory-mb", out string? memoryText) && long.TryParse(memoryText, out long memory))
+            limits.MemoryBytes = (ulong)memory << 20;
+
+        int maxTrials = 500;
+        if (a.Kv.TryGetValue("max-trials", out string? maxTrialsText) && int.TryParse(maxTrialsText, out int parsedTrials))
+            maxTrials = Math.Clamp(parsedTrials, 1, 5000);
+
+        bool aggressive = a.Flags.Contains("aggressive");
+        bool ignoreWhitespace = !a.Flags.Contains("no-ignore-ws");
+
+        var spec = new ShrinkSpec
+        {
+            Problem = problem,
+            Cfg = cfg,
+            InputPath = inputPath,
+            SolutionPath = solutionPath,
+            ReferencePath = referencePath,
+            Limits = limits,
+            IgnoreWhitespace = ignoreWhitespace,
+            MaxTrials = maxTrials,
+            Aggressive = aggressive,
+        };
+
+        var result = Shrinker.Run(spec, log);
+
+        if (a.Kv.TryGetValue("json-report", out string? jsonPath))
+        {
+            if (!WriteJsonReport(jsonPath, new
+            {
+                exitCode = result.Ok ? 0 : (result.Cancelled ? 1 : 2),
+                result.Ok,
+                result.Cancelled,
+                result.Error,
+                result.OriginalSize,
+                result.MinimizedSize,
+                result.Trials,
+                result.SuccessfulReductions,
+                result.FinalStatus,
+                result.FinalMessage,
+                result.TotalTime,
+                minimizedPath = Path.ChangeExtension(inputPath, ".min.inp")
+            }, out string? jsonError))
+            {
+                Err(jsonError ?? "Không ghi được JSON report.");
+                return 2;
+            }
+        }
+
+        if (result.Cancelled) return 1;
+        if (!result.Ok)
+        {
+            Err("LỖI: " + result.Error);
+            return 2;
+        }
+        return 0;
+    }
+
+    private static int RunStressTestCommand(Args a, IJobLog log)
+    {
+        if (!a.Kv.TryGetValue("problem", out string? problemId))
+        {
+            Err("LỖI: --stress-test cần --problem <dạng>.");
+            return 2;
+        }
+        if (!a.Kv.TryGetValue("solution", out string? solutionPath))
+        {
+            Err("LỖI: --stress-test cần --solution <file lời giải>.");
+            return 2;
+        }
+        if (!File.Exists(solutionPath))
+        {
+            Err("LỖI: không tìm thấy lời giải: " + solutionPath);
+            return 2;
+        }
+
+        string? referencePath = null;
+        if (a.Kv.TryGetValue("reference", out string? refPath))
+        {
+            if (!File.Exists(refPath))
+            {
+                Err("LỖI: không tìm thấy lời giải tham chiếu: " + refPath);
+                return 2;
+            }
+            referencePath = refPath;
+        }
+
+        var problem = Problems.Find(problemId);
+        if (problem == null)
+        {
+            Err($"LỖI: không có dạng bài '{problemId}'.");
+            return 2;
+        }
+
+        // Build base config from CLI parameters
+        var baseConfig = problem.DefaultConfig();
+        var parameterRanges = new List<ParameterRange>();
+        var explicitKeys = new HashSet<string>();
+        var specs = problem.Params.ToDictionary(x => x.Key);
+
+        foreach (var k in a.Order)
+        {
+            if (GlobalKeys.Contains(k) || k == "stress-test" || k == "problem" || k == "solution" || k == "reference" || k == "tests" || k == "seed" || k == "timeout" || k == "max-output-mb" || k == "memory-mb" || k == "compiler" || k == "cxxflags" || k == "python" || k == "ignore-ws" || k == "no-ignore-ws") continue;
+            if (!specs.TryGetValue(k, out var ps))
+            {
+                string names = string.Concat(problem.Params.Select(x => " --" + x.Key));
+                Err($"LỖI: dạng bài '{problem.Id}' không có tham số --{k}.\n  Các tham số hợp lệ:{names}\n  Xem chi tiết: ojgen --info {problem.Id}");
+                return 2;
+            }
+            string v = a.Kv[k];
+
+            // Parse as range: "min,max[,step]" or comma-separated values "v1,v2,v3,..."
+            if (ps.Type == ParamType.Int)
+            {
+                var parts = v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                // If more than 3 parts, definitely explicit values (v1,v2,v3,...)
+                // If exactly 3 parts, check if it looks like a valid range (step divides range evenly)
+                // If 2 parts, treat as min,max range with step=1
+                bool isExplicitValues = parts.Length > 3;
+
+                if (!isExplicitValues && parts.Length >= 2)
+                {
+                    if (long.TryParse(parts[0], out long min) && long.TryParse(parts[1], out long max))
+                    {
+                        long step = 1;
+                        bool validRange = true;
+                        if (parts.Length >= 3 && long.TryParse(parts[2], out long parsedStep))
+                        {
+                            step = parsedStep;
+                            // Validate that step makes sense for a range
+                            if (step <= 0 || min > max || (max - min) % step != 0)
+                            {
+                                validRange = false; // Likely explicit values like "10,20,30"
+                            }
+                        }
+                        else if (parts.Length == 3)
+                        {
+                            // 3 parts but 3rd not a valid number - explicit values
+                            validRange = false;
+                        }
+
+                        if (validRange)
+                        {
+                            parameterRanges.Add(new ParameterRange { Key = k, Min = min, Max = max, Step = step });
+                            explicitKeys.Add(k);
+                            continue;
+                        }
+                    }
+                }
+                // Try comma-separated explicit values (fallback if range parsing failed or not attempted)
+                var values = new List<long>();
+                foreach (var part in parts)
+                {
+                    if (long.TryParse(part, out long val)) values.Add(val);
+                }
+                if (values.Count > 0)
+                {
+                    parameterRanges.Add(new ParameterRange { Key = k, Min = 0, Max = 0, Step = 1, Values = values });
+                    explicitKeys.Add(k);
+                    continue;
+                }
+                // Single value - set in base config
+                if (Util.ParseLL(v, out long singleVal))
+                {
+                    baseConfig.Set(k, singleVal);
+                    explicitKeys.Add(k);
+                    continue;
+                }
+                Err($"LỖI: --{k} = '{v}' không hợp lệ cho stress test (dùng 'min max [step]' hoặc 'v1,v2,v3').");
+                return 2;
+            }
+            else if (ps.Type == ParamType.Bool)
+            {
+                // Boolean: comma-separated values "0,1" or "true,false"
+                var parts = v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var values = new List<long>();
+                foreach (var part in parts)
+                {
+                    string b = part.ToLowerInvariant();
+                    if (b is "1" or "true" or "yes" or "y") values.Add(1);
+                    else if (b is "0" or "false" or "no" or "n") values.Add(0);
+                    else
+                    {
+                        Err($"LỖI: --{k} chỉ nhận 0/1 hoặc true/false.");
+                        return 2;
+                    }
+                }
+                if (values.Count > 0)
+                {
+                    parameterRanges.Add(new ParameterRange { Key = k, Min = 0, Max = 0, Step = 1, Values = values });
+                    explicitKeys.Add(k);
+                    continue;
+                }
+            }
+            else if (ps.Type == ParamType.Text)
+            {
+                // Text: comma-separated values
+                var parts = v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var values = new List<long>();
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    values.Add(i); // Use index as value, store actual strings in base config per iteration
+                }
+                if (values.Count > 0)
+                {
+                    parameterRanges.Add(new ParameterRange { Key = k, Min = 0, Max = 0, Step = 1, Values = values });
+                    // Store text values in a special way
+                    baseConfig.SetText(k + "_stress_values", string.Join("|", parts));
+                    explicitKeys.Add(k);
+                    continue;
+                }
+            }
+            // Single value for non-range
+            if (ps.Type == ParamType.Text) baseConfig.SetText(k, v);
+            else if (ps.Type == ParamType.Bool)
+            {
+                string b = v.ToLowerInvariant();
+                if (b is "1" or "true" or "yes" or "y") baseConfig.Set(k, 1);
+                else if (b is "0" or "false" or "no" or "n") baseConfig.Set(k, 0);
+                else { Err($"LỖI: --{k} chỉ nhận 0 hoặc 1."); return 2; }
+            }
+            else if (Util.ParseLL(v, out long x)) baseConfig.Set(k, x);
+            else { Err($"LỖI: --{k} = '{v}' không phải số nguyên hợp lệ."); return 2; }
+            explicitKeys.Add(k);
+        }
+
+        problem.FinalizeCliConfig(baseConfig, explicitKeys);
+        if (Generator.ValidateFullConfig(problem, baseConfig) is { } ce) { Err("LỖI cấu hình: " + ce); return 2; }
+
+        if (parameterRanges.Count == 0)
+        {
+            Err("LỖI: cần ít nhất một tham số với khoảng giá trị (--param MIN MAX [STEP] hoặc --param v1,v2,v3).");
+            return 2;
+        }
+
+        int testsPerConfig = 10;
+        if (a.Kv.TryGetValue("tests", out var ts) && (!Util.ParseLL(ts, out long parsedTests) || parsedTests < 1 || parsedTests > 1000))
+        {
+            Err("LỖI: --tests phải là số nguyên trong [1, 1000].");
+            return 2;
+        }
+        else if (Util.ParseLL(ts, out long tt)) testsPerConfig = (int)tt;
+
+        ulong? baseSeed = null;
+        if (a.Kv.TryGetValue("seed", out var ss) && Util.ParseULL(ss, out ulong sv)) baseSeed = sv;
+
+        var st = Settings.Load(a.Kv.GetValueOrDefault("settings"), out string? warn);
+        if (!string.IsNullOrEmpty(warn)) Console.Out.WriteLine(warn);
+        if (!ApplySettingsOverrides(a, st, out string overrideErr)) { Err("LỖI: " + overrideErr); return 2; }
+
+        var limits = new RunLimits
+        {
+            TimeoutMs = st.TimeoutMs,
+            MaxOutputBytes = (ulong)st.MaxOutputMB << 20,
+            MemoryBytes = (ulong)st.MemoryMB << 20,
+        };
+
+        bool ignoreWhitespace = !a.Flags.Contains("no-ignore-ws") || a.Flags.Contains("ignore-ws");
+
+        var spec = new StressTestSpec
+        {
+            Problem = problem,
+            BaseConfig = baseConfig,
+            SolutionPath = solutionPath,
+            ReferencePath = referencePath,
+            ParameterRanges = parameterRanges,
+            TestsPerConfig = testsPerConfig,
+            Limits = limits,
+            WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(solutionPath)),
+            IgnoreWhitespace = ignoreWhitespace,
+            BaseSeed = baseSeed,
+        };
+
+        log.Line($"Bắt đầu stress test: {parameterRanges.Count} tham số, {testsPerConfig} test/cấu hình");
+        var report = ConfigStressTester.Run(spec, log);
+
+        if (!string.IsNullOrEmpty(report.Error))
+        {
+            Err("LỖI stress test: " + report.Error);
+            return 2;
+        }
+
+        Console.Out.WriteLine(report.ToText());
+
+        if (a.Kv.TryGetValue("json-report", out string? jsonPath))
+        {
+            if (!WriteJsonReport(jsonPath, new
+            {
+                exitCode = 0,
+                report.Ok,
+                report.Error,
+                report.TotalConfigsTested,
+                report.TotalTestsRun,
+                report.TotalTime,
+                Results = report.Results.Select(r => new
+                {
+                    ConfigName = r.ConfigName,
+                    ConfigValues = r.ConfigValues,
+                    TestCount = r.TestCount,
+                    OkCount = r.OkCount,
+                    TleCount = r.TleCount,
+                    MleCount = r.MleCount,
+                    ReCount = r.ReCount,
+                    WaCount = r.WaCount,
+                    PassRate = r.PassRate,
+                    MaxTimeMs = r.MaxTimeMs,
+                    MedianTimeMs = r.MedianTimeMs,
+                    P95TimeMs = r.P95TimeMs,
+                    PeakMemoryBytes = r.PeakMemoryBytes,
+                    Status = r.Status
+                }).ToArray()
+            }, out string? jsonError))
+            {
+                Err(jsonError ?? "Không ghi được JSON report.");
+                return 2;
+            }
+        }
+
+        return report.Ok ? 0 : 1;
+    }
+
+    private static Problem? DetectProblemFromInput(string input)
+    {
+        string normalized = input.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+        string[] lines = normalized.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length == 0) return null;
+
+        string firstLine = lines[0].Trim();
+        string[] firstTokens = firstLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
+        // single_n / two_ints: single number or two numbers on first line
+        if (firstTokens.Length == 1 && long.TryParse(firstTokens[0], out _))
+        {
+            if (lines.Length == 1) return Problems.Find("single_n");
+            // Could be array, tree, etc. with n on first line
+            if (lines.Length == 2) return Problems.Find("array"); // n + values
+            if (lines.Length > 2) return Problems.Find("queries"); // n q + array + queries
+        }
+        if (firstTokens.Length == 2 && firstTokens.All(t => long.TryParse(t, out _)))
+        {
+            // Could be graph (n m), grid (h w), matrix (n m), two_ints (a b)
+            if (lines.Length == 1) return Problems.Find("two_ints");
+            // Check if subsequent lines look like edges (pairs)
+            if (lines.Length > 1)
+            {
+                string secondLine = lines[1].Trim();
+                string[] secondTokens = secondLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (secondTokens.Length >= 2 && secondTokens.All(t => long.TryParse(t, out _)))
+                    return Problems.Find("graph"); // edges
+                return Problems.Find("grid"); // grid rows
+            }
+        }
+
+        // Try to detect by format
+        if (lines.Length >= 2)
+        {
+            // Tree: n then parents
+            if (lines.Length == 2 && firstTokens.Length == 1 && long.TryParse(firstTokens[0], out long n))
+            {
+                string[] parents = lines[1].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (parents.Length == n - 1 && parents.All(p => long.TryParse(p, out _)))
+                    return Problems.Find("tree");
+            }
+            // String: length then string, or just string
+            if (firstTokens.Length == 1 && long.TryParse(firstTokens[0], out long len) && lines.Length == 2)
+            {
+                if (lines[1].Length == len) return Problems.Find("string");
+            }
+            if (lines.Length == 1 && firstTokens.Length == 1 && !firstTokens[0].Contains(' '))
+                return Problems.Find("string");
+        }
+
+        // Default fallback
+        return Problems.Find("custom");
     }
 }

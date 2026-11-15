@@ -228,10 +228,170 @@ public interface IOjGenProblemPlugin
 public interface IOjGenProblemPluginMetadata
 {
     int ApiVersion { get; }
+    /// <summary>Plugin version (semantic versioning recommended).</summary>
+    string Version { get; }
+    /// <summary>Plugin author.</summary>
+    string Author { get; }
+    /// <summary>Brief description of what this plugin provides.</summary>
+    string Description { get; }
+    /// <summary>Plugin homepage or repository URL.</summary>
+    string Url { get; }
+    /// <summary>Minimum OjGen version required (e.g., "3.3.0").</summary>
+    string MinOjGenVersion { get; }
+}
+
+/// <summary>Extended plugin interface supporting multiple extension points.</summary>
+public interface IOjGenPlugin : IOjGenProblemPlugin, IOjGenProblemPluginMetadata
+{
+    /// <summary>Custom validators (optional).</summary>
+    IEnumerable<IOjGenValidator>? CreateValidators() => null;
+
+    /// <summary>Custom checkers (optional).</summary>
+    IEnumerable<IOjGenChecker>? CreateCheckers() => null;
+
+    /// <summary>Custom test package exporters (optional).</summary>
+    IEnumerable<IOjGenExporter>? CreateExporters() => null;
+
+    /// <summary>Custom solution runners (optional).</summary>
+    IEnumerable<IOjGenSolutionRunner>? CreateSolutionRunners() => null;
+
+    /// <summary>Event hooks (optional).</summary>
+    IEnumerable<IOjGenEventHook>? CreateEventHooks() => null;
+}
+
+/// <summary>Custom validator that can validate an input file against problem constraints.</summary>
+public interface IOjGenValidator
+{
+    /// <summary>Unique validator ID (e.g., "myplugin.graph-validator").</summary>
+    string Id { get; }
+
+    /// <summary>Human-readable name.</summary>
+    string Name { get; }
+
+    /// <summary>Problem IDs this validator applies to (empty = all problems).</summary>
+    IReadOnlyList<string> ApplicableProblemIds { get; }
+
+    /// <summary>Validate an input file. Returns null if valid, error message if invalid.</summary>
+    string? ValidateInput(string input, Config config, Problem problem);
+}
+
+/// <summary>Custom checker for comparing output with expected answer.</summary>
+public interface IOjGenChecker
+{
+    /// <summary>Unique checker ID (e.g., "myplugin.floating-point-checker").</summary>
+    string Id { get; }
+
+    /// <summary>Human-readable name.</summary>
+    string Name { get; }
+
+    /// <summary>Problem IDs this checker applies to (empty = all problems).</summary>
+    IReadOnlyList<string> ApplicableProblemIds { get; }
+
+    /// <summary>Checker arguments template (e.g., "{input} {output} {answer}").</summary>
+    string ArgumentsTemplate { get; }
+
+    /// <summary>Timeout for checker execution in milliseconds.</summary>
+    int TimeoutMs { get; }
+
+    /// <summary>Check if candidate output matches expected answer.
+    /// Returns: (isAccepted, message, exitCode) where exitCode: 0=AC, 1=WA, 2=checker error.</summary>
+    (bool Accepted, string Message, int ExitCode) Check(string inputPath, string outputPath, string answerPath, Config config, Problem problem);
+}
+
+/// <summary>Custom test package exporter for interchange formats.</summary>
+public interface IOjGenExporter
+{
+    /// <summary>Unique exporter ID (e.g., "myplugin.custom-format").</summary>
+    string Id { get; }
+
+    /// <summary>Human-readable format name.</summary>
+    string FormatName { get; }
+
+    /// <summary>File extension for the exported archive (e.g., ".zip", ".tar.gz").</summary>
+    string ArchiveExtension { get; }
+
+    /// <summary>Export test data to the specified archive.</summary>
+    bool Export(string testDirectory, string outputArchivePath, IJobLog log, out string? error);
+}
+
+/// <summary>Custom solution runner for compiling/running solutions in unsupported languages.</summary>
+public interface IOjGenSolutionRunner
+{
+    /// <summary>Unique runner ID (e.g., "myplugin.haskell-runner").</summary>
+    string Id { get; }
+
+    /// <summary>Human-readable name.</summary>
+    string Name { get; }
+
+    /// <summary>File extensions this runner handles (e.g., [".hs", ".lhs"]).</summary>
+    IReadOnlyList<string> HandledExtensions { get; }
+
+    /// <summary>Prepare a solution for execution. Returns PreparedSolution or error.</summary>
+    PreparedSolution Prepare(string solutionPath, Settings settings, string workDir, bool forceRebuild, IJobLog log, CancellationToken ct = default);
+}
+
+/// <summary>Minimal audit report interface for event hooks (CLI implements this).</summary>
+public interface IOjGenAuditReport
+{
+    bool Cancelled { get; }
+    bool HasErrors { get; }
+    int WarningCount { get; }
+    int TotalCount { get; }
+    int PassedCount { get; }
+    int FailedCount { get; }
+    IReadOnlyList<IOjGenAuditItem> Items { get; }
+}
+
+/// <summary>Minimal audit item interface for event hooks.</summary>
+public interface IOjGenAuditItem
+{
+    string Level { get; } // "Pass", "Info", "Warning", "Error"
+    string Title { get; }
+    string Detail { get; }
+}
+
+/// <summary>Event hook for plugin lifecycle and generation events.</summary>
+public interface IOjGenEventHook
+{
+    /// <summary>Called when OjGen starts (CLI or GUI).</summary>
+    void OnStart(IJobLog log);
+
+    /// <summary>Called before generating a test case.</summary>
+    void OnBeforeGenerate(Problem problem, Config config, int testIndex, int totalTests, IJobLog log);
+
+    /// <summary>Called after generating a test case.</summary>
+    void OnAfterGenerate(Problem problem, Config config, int testIndex, int totalTests, string input, IJobLog log);
+
+    /// <summary>Called before running a solution on a test.</summary>
+    void OnBeforeRunSolution(Problem problem, Config config, string inputPath, int testIndex, IJobLog log);
+
+    /// <summary>Called after running a solution on a test.</summary>
+    void OnAfterRunSolution(Problem problem, Config config, string inputPath, int testIndex, RunResult result, IJobLog log);
+
+    /// <summary>Called before running a checker.</summary>
+    void OnBeforeRunChecker(Problem problem, string checkerId, string inputPath, string outputPath, string answerPath, IJobLog log);
+
+    /// <summary>Called after running a checker.</summary>
+    void OnAfterRunChecker(Problem problem, string checkerId, string inputPath, string outputPath, string answerPath, bool accepted, string message, IJobLog log);
+
+    /// <summary>Called when audit is about to start.</summary>
+    void OnAuditStart(Problem problem, Config config, int testCount, IJobLog log);
+
+    /// <summary>Called when audit completes.</summary>
+    void OnAuditComplete(Problem problem, IOjGenAuditReport report, IJobLog log);
+
+    /// <summary>Called when a test package is about to be created.</summary>
+    void OnBeforePackage(string testDirectory, string zipPath, IJobLog log);
+
+    /// <summary>Called after a test package is created.</summary>
+    void OnAfterPackage(string testDirectory, string zipPath, bool success, IJobLog log);
+
+    /// <summary>Called when OjGen shuts down.</summary>
+    void OnShutdown(IJobLog log);
 }
 
 public static class ProblemPluginSdk
 {
-    /// <summary>Increment only for a breaking change to IOjGenProblemPlugin or the Problem extension contract.</summary>
-    public const int ApiVersion = 1;
+    /// <summary>Increment only for a breaking change to the public extension contract.</summary>
+    public const int ApiVersion = 2;
 }

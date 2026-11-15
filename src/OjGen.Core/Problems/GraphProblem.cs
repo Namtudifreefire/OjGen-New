@@ -251,10 +251,11 @@ public sealed class GraphProblem : Problem
         else if (need > 0)
         {
             ulong maxE = MaxEdgesSimple(n, directed);
-            if (maxE <= EnumLimit && (ulong)m * 2 > maxE)
+            ulong remainingCapacity = maxE - (ulong)used.Count;
+            if (maxE <= EnumLimit && (ulong)need * 2 > remainingCapacity)
             {
                 // Đồ thị dày: liệt kê mọi cặp còn trống rồi chọn ngẫu nhiên.
-                var cand = new List<(long U, long V)>((int)maxE);
+                var cand = new List<(long U, long V)>((int)remainingCapacity);
                 for (long u = 1; u <= n; u++)
                     for (long v = directed ? 1 : u + 1; v <= n; v++)
                         if (u != v && !used.Contains(Key(u, v))) cand.Add((u, v));
@@ -433,9 +434,10 @@ public sealed class GraphProblem : Problem
         else if (need > 0)
         {
             ulong maxEdges = MaxEdgesAllowed(c, n);
-            if (maxEdges <= EnumLimit && (ulong)m * 2 > maxEdges)
+            ulong remainingCapacity = maxEdges - (ulong)used.Count;
+            if (maxEdges <= EnumLimit && (ulong)need * 2 > remainingCapacity)
             {
-                var candidates = new List<(long U, long V)>((int)maxEdges);
+                var candidates = new List<(long U, long V)>((int)remainingCapacity);
                 if (dag)
                 {
                     for (int i = 0; i < order.Count; i++)

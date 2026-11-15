@@ -1,8 +1,8 @@
-# OJGEN 3.3.0 — Trình tạo test cho lập trình thi đấu
+# OJGEN 3.3.1 — Trình tạo test cho lập trình thi đấu
 
-OJGEN 3.3.0 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
+OJGEN 3.3.1 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
 
-OJGEN 3.3.0 bổ sung workspace `.ojproject`, tiếp tục cả pipeline tạo test, shrinker cấu trúc, ca hợp đồng validator/checker, provenance/inventory và preflight gói phát hành.
+OJGEN 3.3.1 tập trung sửa lỗi và củng cố độ tin cậy cho quy trình soạn đề, sinh test, chạy lời giải, kiểm định và đóng gói. Bản này cũng bổ sung hồi quy cho các lỗi đã xử lý.
 
 Ứng dụng hỗ trợ tạo dữ liệu kiểm thử, chạy lời giải chuẩn để sinh output, quản lý bộ test và đóng gói ZIP. OJGEN cung cấp cả giao diện đồ họa (GUI) và dòng lệnh (CLI), phù hợp với nhu cầu sử dụng trực tiếp lẫn tự động hóa.
 
@@ -286,12 +286,12 @@ Kết quả xác minh mã nguồn 3.2.0 trên Windows:
 
 ## 7. Ghi công và giấy phép
 
-OJGEN 3.3.0 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
+OJGEN 3.3.1 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
 
 - **Tác giả ban đầu:** `minhquackk`.
 - **Tác giả/chủ sở hữu dự án nguồn được ghi nhận:** `Namtudifreefire/thienthuongthienha_duyngadocton_`.
 - **Tham khảo giao diện và chủ đề:** [TQLTK](https://github.com/Namtudifreefire/TQLTK).
 - **Giấy phép:** MIT — xem file [`LICENSE`](LICENSE) trong repository.
 
-OJGEN 3.3.0 là phiên bản chuyển đổi và mở rộng từ dự án gốc. Vui lòng giữ nguyên thông tin bản quyền, ghi công tác giả và các thông báo giấy phép liên quan khi phân phối lại.
+OJGEN 3.3.1 là phiên bản chuyển đổi và mở rộng từ dự án gốc. Vui lòng giữ nguyên thông tin bản quyền, ghi công tác giả và các thông báo giấy phép liên quan khi phân phối lại.
 

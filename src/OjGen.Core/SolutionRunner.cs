@@ -586,7 +586,8 @@ public static class SolutionRunner
     /// </summary>
     public static OutputReport ProduceOutputs(IReadOnlyList<string> argv, IReadOnlyList<string> inputs, Settings st,
                                               string workDir, IJobLog log, CancellationToken ct = default,
-                                              bool resume = false, string? resumeFingerprint = null, string? solutionWorkingDirectory = null)
+                                              bool resume = false, string? resumeFingerprint = null, string? solutionWorkingDirectory = null,
+                                              Problem? problem = null, Config? config = null)
     {
         var rep = new OutputReport { Total = inputs.Count };
         try { Directory.CreateDirectory(workDir); } catch (Exception) { }
@@ -661,12 +662,32 @@ public static class SolutionRunner
             if (resume) checkpoint!.Outputs.Remove(Path.GetFileName(finalOut));
             log.Write($"  [{idx}/{inputs.Count}] {name} ... ");
             log.Progress("Chạy lời giải", i, inputs.Count);
+
+            // Fire event hooks: OnBeforeRunSolution
+            if (problem != null && config != null)
+            {
+                foreach (var hook in PluginExtensionRegistry.GetEventHooks())
+                {
+                    try { hook.OnBeforeRunSolution(problem, config, inp, i, log); } catch (Exception) { }
+                }
+            }
+
             RunResult rr = ProcessRunner.Run(argv, Path.GetFullPath(inp), tmpOut, tmpErr,
                 string.IsNullOrWhiteSpace(solutionWorkingDirectory) ? workDir : solutionWorkingDirectory, lim, ct, unixLimits: true);
             if (rr.Status == RunStatus.Cancelled) { log.Line("ĐÃ HỦY"); rep.Cancelled = true; break; }
             rep.MaxMs = Math.Max(rep.MaxMs, rr.ElapsedMs);
             rep.PeakMemoryBytes = Math.Max(rep.PeakMemoryBytes, rr.PeakMemoryBytes);
             rep.Metrics.Add(new TestRunMetric(i + 1, name, rr.ElapsedMs, rr.PeakMemoryBytes, rr.Status));
+
+            // Fire event hooks: OnAfterRunSolution
+            if (problem != null && config != null)
+            {
+                foreach (var hook in PluginExtensionRegistry.GetEventHooks())
+                {
+                    try { hook.OnAfterRunSolution(problem, config, inp, i, rr, log); } catch (Exception) { }
+                }
+            }
+
             string reason = "";
             if (rr.Status == RunStatus.Ok)
             {

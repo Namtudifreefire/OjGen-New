@@ -386,6 +386,89 @@ public static class SelfTest
         }
 
         log.Line("");
+
+        // Shrinker tests
+        {
+            log.Line("Shrinker: kiểm tra thu nhỏ test case…");
+            var p = Problems.Find("single_n")!;
+
+            // Create a test input that causes WA with a buggy solution
+            string testDir = Path.Combine(SelfTestRoot(), "shrink-test-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(testDir);
+                string inputPath = Path.Combine(testDir, "test.inp");
+                string buggyPath = Path.Combine(testDir, "buggy.cpp");
+                string correctPath = Path.Combine(testDir, "correct.cpp");
+
+                File.WriteAllText(inputPath, "100\n"); // n=100
+                File.WriteAllText(buggyPath, @"#include <bits/stdc++.h>
+using namespace std;
+int main() { long long n; if(!(cin>>n)) return 0; cout << n << '\n'; return 0; }"); // prints n instead of sum
+                File.WriteAllText(correctPath, @"#include <bits/stdc++.h>
+using namespace std;
+int main() { long long n; if(!(cin>>n)) return 0; cout << n*(n+1)/2 << '\n'; return 0; }");
+
+                var st = new Settings { TimeoutMs = 2000, OutputRoot = testDir };
+                var spec = new ShrinkSpec
+                {
+                    Problem = p,
+                    Cfg = p.DefaultConfig(),
+                    InputPath = inputPath,
+                    SolutionPath = buggyPath,
+                    ReferencePath = correctPath,
+                    Limits = new RunLimits { TimeoutMs = 2000, MaxOutputBytes = 1<<20, MemoryBytes = 256L<<20 },
+                    IgnoreWhitespace = true,
+                    MaxTrials = 50,
+                };
+
+                var result = Shrinker.Run(spec, new NullLog());
+                Check(result.Ok && !result.Cancelled, "shrinker: WA case chạy thành công",
+                    $"Ok={result.Ok}, Cancelled={result.Cancelled}, Error={result.Error}");
+                Check(result.MinimizedSize < result.OriginalSize, "shrinker: input đã được thu nhỏ",
+                    $"Original={result.OriginalSize}, Minimized={result.MinimizedSize}");
+                Check(result.SuccessfulReductions > 0, "shrinker: có ít nhất 1 lần giảm thành công",
+                    $"Reductions={result.SuccessfulReductions}");
+
+                // Test TLE shrinker
+                string tleInput = Path.Combine(testDir, "tle.inp");
+                string slowPath = Path.Combine(testDir, "slow.cpp");
+                File.WriteAllText(tleInput, "50000\n");
+                File.WriteAllText(slowPath, @"#include <bits/stdc++.h>
+using namespace std;
+int main() { long long n; if(!(cin>>n)) return 0; volatile long long s=0; for(long long i=0;i<n;i++) for(long long j=0;j<n;j++) s+=i*j; cout<<s<<'\n'; return 0; }");
+
+                var tleSpec = new ShrinkSpec
+                {
+                    Problem = p,
+                    Cfg = p.DefaultConfig(),
+                    InputPath = tleInput,
+                    SolutionPath = slowPath,
+                    Limits = new RunLimits { TimeoutMs = 50, MaxOutputBytes = 1<<20, MemoryBytes = 256L<<20 },
+                    IgnoreWhitespace = true,
+                    MaxTrials = 30,
+                };
+
+                var tleResult = Shrinker.Run(tleSpec, new NullLog());
+                Check(tleResult.Ok && !tleResult.Cancelled && tleResult.FinalStatus == RunStatus.Timeout,
+                    "shrinker: TLE case giữ nguyên TLE", $"Status={tleResult.FinalStatus}, Error={tleResult.Error}");
+
+                // Test GenerateShrinkCandidates for different problem types
+                var arrayCandidates = Shrinker.GenerateShrinkCandidates("5\n1 2 3 4 5\n", Problems.Find("array")!, new Config()).ToList();
+                Check(arrayCandidates.Count > 0, "shrinker: sinh ứng viên cho array");
+
+                var graphCandidates = Shrinker.GenerateShrinkCandidates("4 3\n1 2\n2 3\n3 4\n", Problems.Find("graph")!, new Config()).ToList();
+                Check(graphCandidates.Count > 0, "shrinker: sinh ứng viên cho graph");
+
+                var stringCandidates = Shrinker.GenerateShrinkCandidates("5\nhello\n", Problems.Find("string")!, new Config()).ToList();
+                Check(stringCandidates.Count > 0, "shrinker: sinh ứng viên cho string");
+
+                log.Line($"  Shrinker: OK ({arrayCandidates.Count} array, {graphCandidates.Count} graph, {stringCandidates.Count} string candidates)");
+            }
+            catch (Exception ex) { Check(false, "shrinker: test thất bại", ex.Message); }
+            finally { try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch (Exception) { } }
+        }
+
         log.Line($"Kết quả: {pass} kiểm tra đạt, {fail} thất bại.");
         log.Line(fail == 0 ? "SELFTEST: ĐẠT" : "SELFTEST: KHÔNG ĐẠT");
         return fail == 0 ? 0 : 1;

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>FullExamplePlugin</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="OjGen.Core">
+      <HintPath>../../src/OjGen.Core/bin/Release/net10.0/OjGen.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

@@ -467,7 +467,8 @@ public static class Job
                         ? SolutionRunner.CreateResumeFingerprint(job.SolutionPath, st)
                         : "";
                     rep = SolutionRunner.ProduceOutputs(ps.Argv, g.Inputs, st, st.WorkDir, log, ct,
-                        resume: job.ResumeGeneration, resumeFingerprint: outputFingerprint, solutionWorkingDirectory: ps.WorkingDirectory);
+                        resume: job.ResumeGeneration, resumeFingerprint: outputFingerprint, solutionWorkingDirectory: ps.WorkingDirectory,
+                        problem: job.Problem, config: job.Cfg);
                 }
                 finally { SolutionRunner.Cleanup(ps); }
                 for (int i = 0; i < Math.Min(job.ManualTests.Count, g.Inputs.Count); i++)

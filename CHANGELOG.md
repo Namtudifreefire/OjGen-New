@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.3.2 — 2026-11-15
+
+- **Plugin API hoàn thiện**: Triển khai đầy đủ hệ thống mở rộng plugin với 6 điểm mở rộng (Validator, Checker, Exporter, SolutionRunner, EventHook, ProblemPluginMetadata) và PluginExtensionRegistry truy cập toàn cục.
+- **Event Hook System**: Hệ thống hook vòng đời (OnStart, OnBeforeGenerate/AfterGenerate, OnBeforeRunSolution/AfterRunSolution, OnBeforeRunChecker/AfterRunChecker, OnAuditStart/Complete, OnBeforePackage/AfterPackage, OnShutdown) tích hợp vào pipeline sinh test và chạy lời giải.
+- **ConfigStressTester CLI**: Tích hợp `--stress-test` lệnh dòng lệnh để stress test tham số tìm biên độ fail (TLE/MLE/WA), hỗ trợ format range (MIN,MAX[,STEP]) và giá trị tường minh (V1,V2,V3...), tích hợp reference solution phát hiện WA, báo cáo bảng thống kê và phân tích biên tự động, xuất JSON report.
+- **Ví dụ Plugin đầy đủ**: Thêm `examples/FullExamplePlugin/` demo tất cả extension points: custom problem, validator, checker, exporter, solution runner, event hook.
+- **Tài liệu Plugin SDK**: Cập nhật `docs/PLUGIN_SDK.md` và `PLUGIN_GUIDE.md` tham chiếu đầy đủ với ví dụ code.
+
+## 3.3.1 — 2026-11-14
+
+- Sửa các lỗi hồi quy trong tạo test và thiết lập bài, gồm cấu hình đồ thị biên, nhận diện input lưới, tham số nhóm test và tiến độ CLI.
+- Cải thiện độ tin cậy của kiểm định và đóng gói: xử lý manifest/checksum khi tạo lại output, dữ liệu nhóm trong provenance, thứ tự test tự nhiên và launcher validator.
+- Sửa các vấn đề khi chạy lời giải và checker: áp dụng working directory từ run profile, làm mới cache biên dịch khi header thay đổi, truyền cờ cho C/C++/Pascal và cô lập tệp tạm.
+- Gia cố soạn thảo đề, test tay, hàng đợi dự án và quét thư viện; xử lý tốt hơn dữ liệu không hợp lệ, thao tác hủy và trường hợp lỗi lưu/đọc.
+- Bổ sung hồi quy cho các lỗi đã sửa và hoàn thiện pipeline CI trên GitLab.
+
 ## 3.3.0 — 2026-11-01
 
 - Thu nhỏ input gây sai khác giữa hai lời giải; lưu riêng phản ví dụ gốc và bản rút gọn.

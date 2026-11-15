@@ -3,6 +3,60 @@ using System.Runtime.Loader;
 
 namespace OjGen.Core;
 
+/// <summary>Registry for loaded plugin extensions.</summary>
+public static class PluginExtensionRegistry
+{
+    private static readonly List<IOjGenValidator> Validators = new();
+    private static readonly List<IOjGenChecker> Checkers = new();
+    private static readonly List<IOjGenExporter> Exporters = new();
+    private static readonly List<IOjGenSolutionRunner> SolutionRunners = new();
+    private static readonly List<IOjGenEventHook> EventHooks = new();
+
+    public static IReadOnlyList<IOjGenValidator> GetValidators() => Validators.AsReadOnly();
+    public static IReadOnlyList<IOjGenChecker> GetCheckers() => Checkers.AsReadOnly();
+    public static IReadOnlyList<IOjGenExporter> GetExporters() => Exporters.AsReadOnly();
+    public static IReadOnlyList<IOjGenSolutionRunner> GetSolutionRunners() => SolutionRunners.AsReadOnly();
+    public static IReadOnlyList<IOjGenEventHook> GetEventHooks() => EventHooks.AsReadOnly();
+
+    internal static void RegisterValidator(IOjGenValidator validator)
+    {
+        if (!Validators.Any(v => v.Id == validator.Id))
+            Validators.Add(validator);
+    }
+
+    internal static void RegisterChecker(IOjGenChecker checker)
+    {
+        if (!Checkers.Any(c => c.Id == checker.Id))
+            Checkers.Add(checker);
+    }
+
+    internal static void RegisterExporter(IOjGenExporter exporter)
+    {
+        if (!Exporters.Any(e => e.Id == exporter.Id))
+            Exporters.Add(exporter);
+    }
+
+    internal static void RegisterSolutionRunner(IOjGenSolutionRunner runner)
+    {
+        if (!SolutionRunners.Any(r => r.Id == runner.Id))
+            SolutionRunners.Add(runner);
+    }
+
+    internal static void RegisterEventHook(IOjGenEventHook hook)
+    {
+        EventHooks.Add(hook);
+    }
+
+    internal static void Clear()
+    {
+        Validators.Clear();
+        Checkers.Clear();
+        Exporters.Clear();
+        SolutionRunners.Clear();
+        EventHooks.Clear();
+    }
+}
+
 public static class ProblemPluginLoader
 {
     private sealed class PluginLoadContext : AssemblyLoadContext
@@ -90,6 +144,12 @@ public static class ProblemPluginLoader
                         ?? throw new InvalidDataException($"Plugin {plugin.Name} trả về danh sách dạng bài rỗng.");
                     contributedProblems.AddRange(problems);
                     pluginDescriptions.Add((plugin.Name, problems.Count));
+
+                    // Load extended interfaces if plugin implements IOjGenPlugin
+                    if (plugin is IOjGenPlugin extendedPlugin)
+                    {
+                        LoadExtendedInterfaces(extendedPlugin, messages);
+                    }
                 }
                 if (!Problems.RegisterMany(contributedProblems, out string? registrationError))
                     throw new InvalidDataException(registrationError ?? "Không đăng ký được dạng bài từ plugin.");
@@ -109,5 +169,70 @@ public static class ProblemPluginLoader
         if (Directory.Exists(full) && loadedPlugins == 0 && messages.Count == 0)
             messages.Add("Thư mục không chứa plugin OjGen nào.");
         return messages;
+    }
+
+    private static void LoadExtendedInterfaces(IOjGenPlugin plugin, List<string> messages)
+    {
+        try
+        {
+            // Validators
+            var validators = plugin.CreateValidators();
+            if (validators != null)
+            {
+                foreach (var v in validators)
+                {
+                    PluginExtensionRegistry.RegisterValidator(v);
+                    messages.Add($"  Validator '{v.Id}' ({v.Name}) đã đăng ký.");
+                }
+            }
+
+            // Checkers
+            var checkers = plugin.CreateCheckers();
+            if (checkers != null)
+            {
+                foreach (var c in checkers)
+                {
+                    PluginExtensionRegistry.RegisterChecker(c);
+                    messages.Add($"  Checker '{c.Id}' ({c.Name}) đã đăng ký.");
+                }
+            }
+
+            // Exporters
+            var exporters = plugin.CreateExporters();
+            if (exporters != null)
+            {
+                foreach (var e in exporters)
+                {
+                    PluginExtensionRegistry.RegisterExporter(e);
+                    messages.Add($"  Exporter '{e.Id}' ({e.FormatName}) đã đăng ký.");
+                }
+            }
+
+            // Solution Runners
+            var runners = plugin.CreateSolutionRunners();
+            if (runners != null)
+            {
+                foreach (var r in runners)
+                {
+                    PluginExtensionRegistry.RegisterSolutionRunner(r);
+                    messages.Add($"  Solution Runner '{r.Id}' ({r.Name}) đã đăng ký.");
+                }
+            }
+
+            // Event Hooks
+            var hooks = plugin.CreateEventHooks();
+            if (hooks != null)
+            {
+                foreach (var h in hooks)
+                {
+                    PluginExtensionRegistry.RegisterEventHook(h);
+                    messages.Add($"  Event Hook đã đăng ký.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            messages.Add($"  Lỗi nạp giao diện mở rộng của plugin {plugin.Name}: {ex.Message}");
+        }
     }
 }

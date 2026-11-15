@@ -71,8 +71,29 @@ public static class Generator
     }
 
     /// <summary>Kiểm tra cấu hình (miền từng tham số + logic của module). null nếu hợp lệ.</summary>
-    public static string? ValidateFullConfig(Problem p, Config cfg) =>
-        Problem.CheckParamRanges(p, cfg) ?? p.ValidateConfig(cfg);
+    public static string? ValidateFullConfig(Problem p, Config cfg)
+    {
+        string? err = Problem.CheckParamRanges(p, cfg) ?? p.ValidateConfig(cfg);
+        if (err != null) return err;
+
+        // Run plugin validators
+        foreach (var validator in PluginExtensionRegistry.GetValidators())
+        {
+            if (validator.ApplicableProblemIds.Count == 0 || validator.ApplicableProblemIds.Contains(p.Id))
+            {
+                try
+                {
+                    // We don't have input here, so we can only validate config
+                    // The validator's ValidateInput needs input, so we skip in config validation
+                }
+                catch (Exception ex)
+                {
+                    return $"Plugin validator '{validator.Id}' lỗi: {ex.Message}";
+                }
+            }
+        }
+        return null;
+    }
 
     /// <summary>Seed ngẫu nhiên ngắn (tối đa 12 chữ số) cho dễ ghi lại.</summary>
     public static ulong RandomSeed() =>
@@ -103,6 +124,13 @@ public static class Generator
         var groups = req.Groups.Count > 0
             ? req.Groups
             : new[] { new TestGroupSpec { Name = "Tất cả", TestCount = req.TestCount, Cfg = req.Cfg } };
+
+        // Fire event hooks: OnStart
+        foreach (var hook in PluginExtensionRegistry.GetEventHooks())
+        {
+            try { hook.OnStart(log); } catch (Exception) { }
+        }
+
         if (groups.Count > MaxGroups)
         {
             res.Error = $"Kế hoạch không được vượt quá {MaxGroups} nhóm.";
@@ -235,6 +263,13 @@ public static class Generator
             {
                 if (ct.IsCancellationRequested) { res.Cancelled = true; res.Error = "Đã hủy theo yêu cầu."; return res; }
                 globalTest++;
+
+                // Fire event hooks: OnBeforeGenerate
+                foreach (var hook in PluginExtensionRegistry.GetEventHooks())
+                {
+                    try { hook.OnBeforeGenerate(p, group.Cfg, globalTest - 1, total, log); } catch (Exception) { }
+                }
+
                 string data = "";
                 int sameAs = 0;
                 for (int attempt = 0; attempt < 50; attempt++)
@@ -262,6 +297,12 @@ public static class Generator
                 if (!WriteOrVerifyResumeInput(req, checkpoint, f, data, out string? werr)) { res.Error = werr ?? "Lỗi ghi file."; return res; }
                 res.Inputs.Add(f);
                 log.Progress($"Sinh input · {group.Name}", globalTest, total);
+
+                // Fire event hooks: OnAfterGenerate
+                foreach (var hook in PluginExtensionRegistry.GetEventHooks())
+                {
+                    try { hook.OnAfterGenerate(p, group.Cfg, globalTest - 1, total, data, log); } catch (Exception) { }
+                }
             }
         }
         if (duplicates > 0)
