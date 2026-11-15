@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.3 — 2026-11-15
+
+- **Catalog VNOI đồng bộ**: Cập nhật đầy đủ các tag thuật toán từ https://oj.vnoi.info/problems/ (đối chiếu 160 trang, 31-10-2026). Thêm `Link-Cut Tree`, `Output Only`; `Function graph` đã có sẵn.
+- **CLI Search**: `--search <từ khóa>` tìm kiếm 60+ lệnh/tùy chọn nhanh chóng.
+
 ## 3.3.2 — 2026-11-15
 
 - **Plugin API hoàn thiện**: Triển khai đầy đủ hệ thống mở rộng plugin với 6 điểm mở rộng (Validator, Checker, Exporter, SolutionRunner, EventHook, ProblemPluginMetadata) và PluginExtensionRegistry truy cập toàn cục.
