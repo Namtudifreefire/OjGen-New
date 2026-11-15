@@ -1,8 +1,8 @@
-# OJGEN 3.3.1 — Trình tạo test cho lập trình thi đấu
+# OJGEN 3.3.2 — Trình tạo test cho lập trình thi đấu
 
-OJGEN 3.3.1 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
+OJGEN 3.3.2 là công cụ tạo bộ test tự động cho lập trình thi đấu, được chuyển đổi và phát triển từ phiên bản C++ sang **C# (.NET 10)**, đi kèm giao diện đồ họa WPF hiện đại.
 
-OJGEN 3.3.1 tập trung sửa lỗi và củng cố độ tin cậy cho quy trình soạn đề, sinh test, chạy lời giải, kiểm định và đóng gói. Bản này cũng bổ sung hồi quy cho các lỗi đã xử lý.
+OJGEN 3.3.2 tập trung sửa lỗi và củng cố độ tin cậy cho quy trình soạn đề, sinh test, chạy lời giải, kiểm định và đóng gói. Bản này cũng bổ sung hồi quy cho các lỗi đã xử lý.
 
 Ứng dụng hỗ trợ tạo dữ liệu kiểm thử, chạy lời giải chuẩn để sinh output, quản lý bộ test và đóng gói ZIP. OJGEN cung cấp cả giao diện đồ họa (GUI) và dòng lệnh (CLI), phù hợp với nhu cầu sử dụng trực tiếp lẫn tự động hóa.
 
@@ -55,9 +55,11 @@ OJGEN 3.3.1 tập trung sửa lỗi và củng cố độ tin cậy cho quy trì
 - **Nhập/xuất test-data OJ:** Nạp `.in`/`.inp` và `.ans`/`.out` từ thư mục hoặc ZIP; xuất quy ước test-data trung gian cho Polygon/Testlib, DOMjudge, DMOJ hoặc OjGen. Gói này không chuyển statement, scoring, validator/checker hay metadata đầy đủ của judge.
 - **Plugin generator:** Nạp DLL có lớp triển khai `IOjGenProblemPlugin` và trả về các lớp con `Problem`; CLI dùng `--plugin PATH`, GUI tự dò thư mục `plugins`.
 - **Plugin SDK có phiên bản:** Plugin có thể khai báo `ProblemPluginSdk.ApiVersion`; `ojgen --plugin-check DLL_OR_DIR` kiểm tra tương thích trước khi cấu hình sử dụng.
+- **Plugin API mở rộng (v3.3.2):** Hệ thống extension hoàn chỉnh với 6 điểm mở rộng — `IOjGenValidator` (xác thực input ngữ nghĩa), `IOjGenChecker` (checker tùy chỉnh), `IOjGenExporter` (xuất format test-data), `IOjGenSolutionRunner` (runner ngôn ngữ mới), `IOjGenEventHook` (hook vòng đời), `IOjGenProblemPluginMetadata` (metadata phiên bản/tác giả). `PluginExtensionRegistry` cho truy cập toàn cục; hook tích hợp vào pipeline sinh test và chạy lời giải.
 - **Viết plugin:** Hướng dẫn tạo DLL, triển khai interface và đặt plugin có trong [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
 - **Hàng đợi GUI:** Tự lưu và khôi phục qua lần mở app; đổi thứ tự, seed, thư mục output, kế hoạch nhóm, xóa mục và giữ mục lỗi để sửa/chạy lại.
 - **JSON và shell completion:** `--json-report FILE` ghi báo cáo máy đọc được; `--completion bash|powershell` tạo gợi ý lệnh.
+- **Stress test tham số (v3.3.2):** `ojgen --stress-test --problem <dạng> --solution <file> [--reference <file>] [--tests N] [--seed S] [--<tham số> MIN,MAX[,STEP]|v1,v2,v3...] [--json-report FILE]` — chạy Cartesian product các cấu hình tham số, ghi bảng thống kê (OK/TLE/MLE/RE/WA, median/p95 time, memory), phân tích biên tự động tìm ngưỡng TLE/MLE/WA đầu tiên. Hỗ trợ format range `MIN,MAX,STEP` hoặc giá trị tường minh `v1,v2,v3...`; so sánh WA với `--reference`; xuất JSON cho CI.
 
 ## 2. Các phiên bản
 
@@ -226,6 +228,13 @@ ojgen --compare-problem ./release-a --against ./release-b
 ojgen --check-resources problem.ojdraft.json
 ojgen --check-translations translations.ojtranslation.json
 ojgen --ci-project problem.ojproject --json-report audit.json
+
+Stress test tham số tìm biên độ fail (v3.3.2):
+```bash
+ojgen --stress-test --problem array --solution sol.cpp --tests 20 --minN 10,100000 --maxN 20,200000
+ojgen --stress-test --problem graph --solution sol.cpp --tests 10 --minN 10,1000,50 --maxN 20,2000,50 --minM 5,5000,50 --maxM 10,10000,50
+ojgen --stress-test --problem array --solution sol.cpp --reference ref.cpp --tests 50 --minN 10,100000 --json-report stress.json
+```
 ```
 
 Tạo báo cáo cho script và gợi ý tham số shell:
@@ -282,16 +291,24 @@ Kết quả xác minh mã nguồn 3.2.0 trên Windows:
 - Gói ZIP có cả `GUI/OjGen.exe` và `CLI/ojgen.exe`, đủ tài liệu, manifest SHA-256 của các tệp và checksum riêng cho ZIP.
 - Các lệnh publish có cảnh báo NU1900 vì môi trường không truy cập được NuGet để tải dữ liệu lỗ hổng; restore, build, publish và smoke test vẫn hoàn tất.
 
+Kết quả xác minh bản 3.3.2 trên Windows:
+
+- `ojgen --selftest`: 420/420 kiểm tra đạt (module, xác thực, seed, ZIP, shrinker).
+- `tests/run_tests.sh`: 82/82 kiểm tra đầu-cuối đạt.
+- Plugin API: Nạp DLL, đăng ký 5 extension types (Validator, Checker, Exporter, SolutionRunner, EventHook), sinh bài `example_graph` từ plugin thành công.
+- Stress-test CLI: Range format (`MIN,MAX,STEP`) và explicit values (`v1,v2,v3...`), Cartesian product, reference solution WA detection, JSON report.
+- Event hooks: Được kích hoạt trong pipeline sinh test (`OnBeforeGenerate`, `OnAfterGenerate`) và chạy lời giải (`OnBeforeRunSolution`, `OnAfterRunSolution`).
+
 Để tạo gói phát hành Windows x64 sau khi build và kiểm tra đạt, chạy `scripts/package-release.ps1`. Trên GitHub, workflow **Build and draft release** chạy toàn bộ kiểm tra, tạo ZIP/checksum và mở draft release; workflow không phát hành công khai tự động.
 
 ## 7. Ghi công và giấy phép
 
-OJGEN 3.3.1 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
+OJGEN 3.3.2 được phát triển dựa trên dự án C++ gốc **[Trinh-tao-contest-Classic-](https://github.com/Namtudifreefire/Trinh-tao-contest-Classic-)**.
 
 - **Tác giả ban đầu:** `minhquackk`.
 - **Tác giả/chủ sở hữu dự án nguồn được ghi nhận:** `Namtudifreefire/thienthuongthienha_duyngadocton_`.
 - **Tham khảo giao diện và chủ đề:** [TQLTK](https://github.com/Namtudifreefire/TQLTK).
 - **Giấy phép:** MIT — xem file [`LICENSE`](LICENSE) trong repository.
 
-OJGEN 3.3.1 là phiên bản chuyển đổi và mở rộng từ dự án gốc. Vui lòng giữ nguyên thông tin bản quyền, ghi công tác giả và các thông báo giấy phép liên quan khi phân phối lại.
+OJGEN 3.3.2 là phiên bản chuyển đổi và mở rộng từ dự án gốc. Vui lòng giữ nguyên thông tin bản quyền, ghi công tác giả và các thông báo giấy phép liên quan khi phân phối lại.
 
