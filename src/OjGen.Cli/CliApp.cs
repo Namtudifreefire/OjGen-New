@@ -48,6 +48,7 @@ internal static class CliApp
         s.Append("  ojgen --shrink --input <file.inp> --solution <file> [--reference <file>] [--problem <dạng>] [tùy chọn]  Thu nhỏ test case giữ nguyên lỗi\n");
         s.Append("  ojgen --selftest                   Tự kiểm tra các module và bộ tạo ZIP\n");
         s.Append("  ojgen --stress-test --problem <dạng> --solution <file> [--reference <file>] [tùy chọn]  Stress test tham số để tìm biên độ fail\n");
+        s.Append("  ojgen --search <từ khóa>         Tìm kiếm lệnh/tùy chọn theo từ khóa\n");
         s.Append("  ojgen --help | --version\n\n");
         s.Append("TÙY CHỌN KHI SINH TEST\n");
         s.Append($"  --tests N            Số lượng test (1..{Generator.MaxTests}, mặc định 10)\n");
@@ -93,6 +94,8 @@ internal static class CliApp
         s.Append("  --settings FILE      File cấu hình (mặc định ojgen_settings.ini)\n");
         s.Append("  --json-report FILE   Ghi kết quả dạng JSON\n");
         s.Append("  --<tham số> MIN,MAX[,STEP]  Khoảng tham số: vd --minN 10,100,10 hoặc --minN 10,50,100,1000\n\n");
+        s.Append("TÙY CHỌN TÌM KIẾM\n");
+        s.Append("  --search <từ khóa>   Tìm kiếm các lệnh/tùy chọn liên quan đến từ khóa (vd: ojgen --search zip)\n\n");
         s.Append("TÙY CHỌN KHI THU NHỎ (--shrink)\n");
         s.Append("  --input FILE         File input cần thu nhỏ (bắt buộc)\n");
         s.Append("  --solution FILE      Lời giải bị lỗi (.c/.cpp, .py, .java, .kt, .pas/.pp, .cs, .rs, .go, .ojrun.json hoặc executable)\n");
@@ -161,6 +164,7 @@ internal static class CliApp
         "--contest-export",
         "--shrink", "--input", "--reference", "--max-trials", "--aggressive", "--no-ignore-ws",
         "--stress-test", "--ignore-ws", "--no-ignore-ws",
+        "--search",
     };
 
     private static string CompletionText(string shell)
@@ -344,6 +348,7 @@ internal static class CliApp
         "plugin-check",
         "contest-export",
         "shrink", "input", "reference", "max-trials", "aggressive", "no-ignore-ws",
+        "search",
     };
 
     private static bool ParseArgs(IReadOnlyList<string> input, Args a, out string err)
@@ -439,6 +444,7 @@ internal static class CliApp
         args.Kv.ContainsKey("check-resources"), args.Kv.ContainsKey("check-translations"), args.Kv.ContainsKey("format-info"),
         args.Kv.ContainsKey("export-tests"), args.Kv.ContainsKey("library-clone"), args.Kv.ContainsKey("plugin-check"),
         args.Flags.Contains("stress-test"),
+        args.Kv.ContainsKey("search"),
     }.Count(value => value);
 
     private static int RunWorkspaceCommand(Args a, IJobLog log)
@@ -670,6 +676,10 @@ internal static class CliApp
             if (a.Flags.Contains("stress-test"))
             {
                 return RunStressTestCommand(a, log);
+            }
+            if (a.Kv.TryGetValue("search", out string? searchQuery))
+            {
+                return RunSearchCommand(a, searchQuery);
             }
         }
         catch (Exception ex) { Err("LỖI workspace: " + ex.Message); return 2; }
@@ -1623,5 +1633,136 @@ internal static class CliApp
 
         // Default fallback
         return Problems.Find("custom");
+    }
+
+    private static int RunSearchCommand(Args a, string searchQuery)
+    {
+        string query = searchQuery.ToLowerInvariant().Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            Err("LỖI: --search cần từ khóa tìm kiếm.");
+            return 2;
+        }
+
+        var allCommands = new List<(string Command, string Category, string Description)>
+        {
+            // Generation commands
+            ("--list", "Sinh test", "Liệt kê các dạng bài (module)"),
+            ("--info <dạng>", "Sinh test", "Xem định dạng input và tham số của một dạng bài"),
+            ("--problem <dạng>", "Sinh test", "Sinh bộ test với tham số"),
+            ("--topic <nguồn:nhãn>", "Sinh test", "Chọn khuôn input từ chủ đề thuật toán"),
+            ("--topics", "Sinh test", "Liệt kê chủ đề thuật toán từ các OJ"),
+            ("--seed S", "Sinh test", "Seed ngẫu nhiên (cùng seed + cấu hình = cùng bộ test)"),
+            ("--tests N", "Sinh test", "Số lượng test (1..10000)"),
+            ("--solution FILE", "Sinh test", "Lời giải tạo file .out"),
+            ("--out DIR", "Sinh test", "Thư mục chứa test"),
+            ("--force", "Sinh test", "Ghi đè bộ test cũ"),
+            ("--resume", "Sinh test", "Tiếp tục sinh từ checkpoint"),
+            ("--no-zip", "Sinh test", "Không tạo file ZIP"),
+            ("--zip-incomplete", "Sinh test", "Tạo ZIP khi có lỗi lời giải"),
+            ("--rebuild", "Sinh test", "Biên dịch lại lời giải"),
+            ("--timeout MS", "Sinh test", "Thời gian tối đa mỗi test (ms)"),
+            ("--max-output-mb M", "Sinh test", "Dung lượng output tối đa (MB)"),
+            ("--memory-mb M", "Sinh test", "Giới hạn bộ nhớ lời giải (MB)"),
+            ("--compiler PATH", "Sinh test", "Trình biên dịch C++"),
+            ("--cxxflags \"...\"", "Sinh test", "Cờ biên dịch"),
+            ("--python CMD", "Sinh test", "Lệnh chạy Python"),
+            ("--prefix P", "Sinh test", "Tiền tố tên file test"),
+            ("--no-compress", "Sinh test", "ZIP chỉ lưu, không nén"),
+            ("--settings FILE", "Sinh test", "File cấu hình"),
+            ("--profile FILE", "Sinh test", "Hồ sơ .ojproblem.json"),
+            ("--plan FILE", "Sinh test", "Kế hoạch nhóm .ojplan.json"),
+            ("--coverage-required TAGS", "Sinh test", "Nhãn độ phủ bắt buộc"),
+            ("--json-report FILE", "Sinh test", "Ghi kết quả JSON"),
+            ("--plugin PATH", "Sinh test", "Nạp plugin generator"),
+            ("--<tham số> GIÁ_TRỊ", "Sinh test", "Tham số riêng của dạng bài"),
+
+            // Audit commands
+            ("--audit", "Kiểm định", "Kiểm định bộ vừa sinh trước khi tạo ZIP"),
+            ("--audit-dir DIR", "Kiểm định", "Kiểm định thư mục test có sẵn"),
+            ("--validator FILE", "Kiểm định", "Chạy validator trên input hợp lệ/sai"),
+            ("--checker FILE", "Kiểm định", "Chạy checker trên từng test"),
+            ("--checker-args TEXT", "Kiểm định", "Mẫu argv: {input} {output} {answer} {test}"),
+            ("--checker-timeout MS", "Kiểm định", "Timeout checker (ms)"),
+            ("--statement FILE", "Kiểm định", "Bản nháp .ojdraft.json"),
+            ("--contract-suite FILE", "Kiểm định", "Ca JSON validator/checker"),
+            ("--compare-solution FILE", "Kiểm định", "Đối chiếu với --solution"),
+            ("--allow-audit-warnings", "Kiểm định", "Cho phép ZIP khi chỉ còn cảnh báo"),
+
+            // Package commands
+            ("--zip-dir DIR", "Đóng gói", "Đóng gói ZIP thư mục test"),
+            ("--regen-out DIR", "Đóng gói", "Tạo lại .out cho thư mục test"),
+            ("--import-tests SRC --out DST", "Đóng gói", "Nhập test OJ vào thư mục chuẩn"),
+            ("--compare-package A --against B", "Đóng gói", "So sánh hai bộ test"),
+            ("--export-tests DIR --format F --out ZIP", "Đóng gói", "Xuất test-data interchange"),
+
+            // Workspace commands
+            ("--preset-save TÊN --problem P", "Workspace", "Lưu preset ra đề"),
+            ("--preset FILE", "Workspace", "Dùng preset đã lưu"),
+            ("--preset-list", "Workspace", "Liệt kê preset đã lưu"),
+            ("--library DIR", "Workspace", "Tìm/lọc đề theo nhãn"),
+            ("--library-search QUERY", "Workspace", "Tìm kiếm trong thư viện"),
+            ("--library-tag TAG", "Workspace", "Lọc theo tag"),
+            ("--library-clone FILE --out FILE", "Workspace", "Nhân bản project"),
+            ("--ci-project FILE", "Workspace", "Kiểm định headless CI"),
+            ("--contest FILE", "Workspace", "Kiểm tra workspace nhiều bài"),
+            ("--contest-export ZIP", "Workspace", "Gộp package contest"),
+            ("--compare-problem A --against B", "Workspace", "So sánh hai bản đề/project"),
+            ("--check-resources FILE", "Workspace", "Kiểm tra tài nguyên statement"),
+            ("--check-translations FILE", "Workspace", "Kiểm tra bản dịch"),
+            ("--format-info", "Workspace", "Thông tin định dạng test-data"),
+
+            // Plugin commands
+            ("--plugin-check DLL_OR_DIR", "Plugin", "Kiểm tra plugin/API"),
+            ("--plugin PATH", "Plugin", "Nạp plugin generator"),
+
+            // Shrink commands
+            ("--shrink --input FILE --solution FILE", "Thu nhỏ", "Thu nhỏ test case giữ nguyên lỗi"),
+            ("--reference FILE", "Thu nhỏ", "Lời giải tham chiếu (cho WA)"),
+            ("--max-trials N", "Thu nhỏ", "Số lần thử tối đa"),
+            ("--aggressive", "Thu nhỏ", "Thu nhỏ mạnh hơn"),
+            ("--no-ignore-ws", "Thu nhỏ", "Không bỏ qua khoảng trắng"),
+
+            // Stress test commands
+            ("--stress-test --problem P --solution FILE", "Stress test", "Stress test tham số tìm biên độ fail"),
+            ("--reference FILE", "Stress test", "Lời giải tham chiếu phát hiện WA"),
+            ("--minN 10,100,10", "Stress test", "Khoảng tham số MIN,MAX,STEP"),
+            ("--minN 10,50,100", "Stress test", "Giá trị tường minh v1,v2,v3"),
+
+            // Utility commands
+            ("--search <từ khóa>", "Tiện ích", "Tìm kiếm lệnh/tùy chọn theo từ khóa"),
+            ("--completion bash|powershell", "Tiện ích", "Tạo gợi ý lệnh cho shell"),
+            ("--selftest", "Tiện ích", "Tự kiểm tra module"),
+            ("--help", "Tiện ích", "Hiển thị hướng dẫn"),
+            ("--version", "Tiện ích", "Hiển thị phiên bản"),
+        };
+
+        var matches = allCommands
+            .Where(c => c.Command.ToLowerInvariant().Contains(query) ||
+                       c.Category.ToLowerInvariant().Contains(query) ||
+                       c.Description.ToLowerInvariant().Contains(query))
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            Console.Out.WriteLine($"Không tìm thấy lệnh nào liên quan đến: '{searchQuery}'");
+            Console.Out.WriteLine("Thử: ojgen --help hoặc ojgen --search <từ khóa khác>");
+            return 0;
+        }
+
+        var grouped = matches.GroupBy(c => c.Category).OrderBy(g => g.Key);
+        Console.Out.WriteLine($"Kết quả tìm kiếm cho '{searchQuery}' ({matches.Count} kết quả):\n");
+
+        foreach (var group in grouped)
+        {
+            Console.Out.WriteLine($"=== {group.Key} ===");
+            foreach (var cmd in group)
+            {
+                Console.Out.WriteLine($"  {cmd.Command,-45} {cmd.Description}");
+            }
+            Console.Out.WriteLine();
+        }
+
+        return 0;
     }
 }
