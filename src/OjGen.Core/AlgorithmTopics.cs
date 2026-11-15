@@ -80,6 +80,7 @@ public static class AlgorithmTopics
         new("Lý thuyết Đồ thị", "DSU rollback", "graph"),
         new("Lý thuyết Đồ thị", "Đồ thị đặc biệt - Xương rồng", "graph"),
         new("Lý thuyết Đồ thị", "Đồ thị đặc biệt - Function graph", "graph"),
+        new("Lý thuyết Đồ thị", "Link-Cut Tree", "graph"),
         new("Lý thuyết Đồ thị", "Cầu với khớp", "graph"),
 
         // Cấu trúc dữ liệu
@@ -138,6 +139,7 @@ public static class AlgorithmTopics
         new("Kĩ năng khác", "Nhân ma trận", "matrix"),
         new("Kĩ năng khác", "Xử lý số lớn", "single_n"),
         new("Kĩ năng khác", "Rời rạc hóa", "array"),
+        new("Kĩ năng khác", "Output Only", "custom"),
         new("Kĩ năng khác", "Ad hoc (không thuộc thể loại nào)", "custom"),
         new("Kĩ năng khác", "Sweep line", "pairs"),
         new("Kĩ năng khác", "Divide & Conquer (Chia để trị)", "array"),
